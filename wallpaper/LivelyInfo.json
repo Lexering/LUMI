@@ -1,0 +1,14 @@
+{
+  "AppVersion": "1.0.0.0",
+  "Title": "Lumi",
+  "Thumbnail": "thumbnail.png",
+  "Preview": null,
+  "Desc": "Lumi - your AI study buddy / tu compañero de estudio con IA",
+  "Author": "Lumi",
+  "License": "",
+  "Contact": "",
+  "Type": 1,
+  "FileName": "index.html",
+  "Arguments": null,
+  "IsAbsolutePath": false
+}

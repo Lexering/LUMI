@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumi HUD</title>
+<!--
+  Lumi - animated desktop for the salon (Lively Wallpaper).
+  Data from Lumi at http://127.0.0.1:5055 (state, salon today, weather).
+  Lively: Settings -> Wallpaper -> Wallpaper input: Mouse.
+-->
+<style>
+  :root {
+    --bg: #120a10; --bg2: #1c1018; --card: rgba(38, 22, 32, .58); --card-hi: rgba(56, 32, 46, .72);
+    --line: rgba(236, 190, 170, .16); --line-hi: rgba(236, 190, 170, .40);
+    --rose: #ecbea9; --gold: #d8ad7c; --cream: #fbefe7; --text: #d9c2b8; --dim: #957c76;
+    --sage: #a8cdb6; --red: #ff8a8a; --amber: #f2c27b;
+    --serif: "Cormorant Garamond", "Georgia", "Times New Roman", serif;
+    --sans: "Segoe UI Variable Text", "Segoe UI", "Inter", system-ui, sans-serif;
+    --r: 18px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); user-select: none; }
+  canvas#bg { position: fixed; inset: 0; z-index: 0; }
+  .app { position: relative; z-index: 1; height: 100vh; display: grid; grid-template-columns: minmax(310px, 24vw) 1fr minmax(330px, 25vw);
+         gap: 2vw; padding: 3.4vh 2.4vw 3.4vh; }
+  .col { display: flex; flex-direction: column; gap: 1.8vh; min-height: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 2vh 1.3vw;
+          backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); }
+  .eyebrow { font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: var(--dim); margin: 0 0 1.2vh; display: flex; align-items: center; gap: 10px; }
+  .eyebrow::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line-hi), transparent); }
+  .eyebrow .act { order: 3; color: var(--rose); letter-spacing: .1em; text-transform: none; cursor: pointer; }
+
+  .salon { font-family: var(--serif); font-size: clamp(24px, 1.9vw, 38px); color: var(--cream); font-weight: 500; letter-spacing: .02em; line-height: 1.1; }
+  .clock { font-family: var(--serif); font-size: clamp(56px, 5.6vw, 110px); color: var(--cream); font-weight: 300; line-height: 1; margin-top: 1vh; font-variant-numeric: lining-nums; }
+  .date { color: var(--dim); font-size: clamp(13px, .9vw, 16px); margin-top: .4vh; }
+  .wx { margin-top: 1.4vh; font-size: 13px; color: var(--text); }
+
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .kpi { text-align: left; }
+  .kpi .n { font-family: var(--serif); font-size: clamp(28px, 2.2vw, 42px); color: var(--cream); line-height: 1; }
+  .kpi .l { font-size: 11px; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; margin-top: 6px; }
+
+  .next .when { font-family: var(--serif); font-size: clamp(34px, 2.6vw, 50px); color: var(--rose); line-height: 1; }
+  .next .who { font-size: clamp(18px, 1.3vw, 24px); color: var(--cream); margin-top: .8vh; }
+  .next .what { color: var(--text); font-size: 14px; margin-top: .4vh; }
+  .warn { margin-top: 1vh; padding: 8px 10px; border-radius: 10px; background: rgba(255, 138, 138, .12); border: 1px solid rgba(255, 138, 138, .35);
+          color: #ffd0d0; font-size: 13px; }
+  .empty { color: var(--dim); font-size: 13.5px; }
+
+  /* centre */
+  .centre { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.4vh; min-width: 0; }
+  .orb { position: relative; width: min(36vh, 27vw); aspect-ratio: 1; cursor: pointer; }
+  .orb canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .orb .nm { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--serif); font-size: min(8vh, 6vw); color: var(--cream);
+             letter-spacing: .06em; text-shadow: 0 0 30px rgba(236, 190, 170, .55); pointer-events: none; }
+  .state { font-size: 12px; letter-spacing: .34em; text-transform: uppercase; color: var(--rose); }
+  .hint { font-size: clamp(14px, 1vw, 18px); color: var(--text); min-height: 1.3em; }
+  .bubble { max-width: min(44vw, 740px); text-align: center; font-family: var(--serif); font-size: clamp(18px, 1.35vw, 26px); line-height: 1.4; color: var(--cream); min-height: 3em; }
+  .bubble small { display: block; font-family: var(--sans); font-size: 11px; letter-spacing: .22em; color: var(--dim); text-transform: uppercase; margin-bottom: 6px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 46vw; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px; border: 1px solid var(--line);
+          background: var(--card); color: var(--cream); font-family: var(--sans); font-size: 14px; cursor: pointer; backdrop-filter: blur(12px); }
+  .pill:hover { border-color: var(--rose); background: var(--card-hi); }
+  .pill svg { width: 17px; height: 17px; stroke: var(--rose); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .pill.muted { border-color: rgba(255, 138, 138, .55); }
+  .pill.muted svg { stroke: var(--red); }
+
+  /* timeline */
+  .grow { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .timeline { overflow-y: auto; scrollbar-width: none; flex: 1; min-height: 0; position: relative; }
+  .timeline::-webkit-scrollbar { display: none; }
+  .slot { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: center; }
+  .slot:last-child { border-bottom: 0; }
+  .slot .t { font-family: var(--serif); font-size: 20px; color: var(--cream); }
+  .slot .b { border-left: 3px solid var(--rose); padding-left: 10px; min-width: 0; }
+  .slot .c { color: var(--cream); font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot .s { color: var(--dim); font-size: 12.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot.done { opacity: .45; }
+  .slot.done .c::after { content: " ✓"; color: var(--sage); }
+  .slot.now { background: linear-gradient(90deg, rgba(236, 190, 170, .12), transparent); border-radius: 10px; }
+  .slot .al { color: var(--red); }
+  .alerts .row { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; font-size: 13.5px; color: var(--cream); border-bottom: 1px solid var(--line); }
+  .alerts .row:last-child { border-bottom: 0; }
+  .alerts .row b { color: var(--amber); font-weight: 500; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; min-width: 70px; }
+  .alerts .row.bd b { color: var(--rose); }
+  .sys { font-size: 11px; color: var(--dim); text-align: right; letter-spacing: .06em; }
+  .toast { position: fixed; left: 50%; bottom: 3vh; transform: translateX(-50%); padding: 10px 18px; border-radius: 999px; background: var(--card-hi);
+           border: 1px solid var(--line-hi); color: var(--cream); font-size: 14px; opacity: 0; transition: opacity .25s; z-index: 5; }
+  .toast.show { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="app">
+  <div class="col">
+    <section class="card">
+      <div class="salon" id="salon">Lumi</div>
+      <div class="clock" id="clock">--:--</div>
+      <div class="date" id="date"></div>
+      <div class="wx" id="wx"></div>
+    </section>
+    <section class="card">
+      <div class="eyebrow">Hoy</div>
+      <div class="kpis">
+        <div class="kpi"><div class="n" id="k-apps">–</div><div class="l">Citas</div></div>
+        <div class="kpi"><div class="n" id="k-left">–</div><div class="l">Pendientes</div></div>
+        <div class="kpi"><div class="n" id="k-cash">–</div><div class="l">Caja</div></div>
+      </div>
+    </section>
+    <section class="card next" id="next-card">
+      <div class="eyebrow">Próximo cliente</div>
+      <div id="next"><div class="empty">Sin más citas hoy</div></div>
+    </section>
+  </div>
+
+  <div class="centre">
+    <div class="orb" id="orb" title="Silenciar / activar micro"><canvas id="orbc"></canvas><div class="nm">Lumi</div></div>
+    <div class="state" id="state">OFFLINE</div>
+    <div class="hint" id="hint"></div>
+    <div class="bubble" id="bubble"></div>
+    <div class="actions">
+      <button class="pill" id="mic" type="button"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Micro</button>
+      <button class="pill" data-ask="¿Qué huecos libres quedan hoy?" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Huecos</button>
+      <button class="pill" data-ask="Hazme el resumen de caja de hoy." type="button"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg>Caja</button>
+      <button class="pill" data-ask="¿Qué productos hay que pedir?" type="button"><svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg>Stock</button>
+      <button class="pill" data-win="chat" type="button"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg>Chat</button>
+      <button class="pill" data-win="boards" type="button"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>Tareas</button>
+    </div>
+  </div>
+
+  <div class="col">
+    <section class="card grow">
+      <div class="eyebrow">Agenda de hoy <span class="act" data-ask="Léeme la agenda de hoy.">Escuchar</span></div>
+      <div class="timeline" id="timeline"><div class="empty">Sin citas</div></div>
+    </section>
+    <section class="card alerts">
+      <div class="eyebrow">Avisos</div>
+      <div id="alerts"><div class="empty">Todo en orden</div></div>
+    </section>
+    <div class="sys" id="sys"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+(() => {
+  const BASE = "http://127.0.0.1:5055";
+  const TOKEN = "__HUD_TOKEN__";
+  const AUTH = { "X-Lumi-Token": TOKEN };
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const STATES = { LISTENING: "Te escucho", STANDBY: "Di «Lumi» para hablar", THINKING: "Pensando…", SPEAKING: "Hablando",
+                   MUTED: "Micro silenciado", OFFLINE: "Lumi se está iniciando…", DICTATING: "Dictando" };
+  function toast(m) { const el = $("toast"); el.textContent = m; el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 2200); }
+  async function api(path, opts = {}) {
+    const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), opts.timeout || 8000);
+    try {
+      const r = await fetch(BASE + path, { method: opts.method || "GET", headers: { ...AUTH, ...(opts.body ? { "Content-Type": "application/json" } : {}) },
+                                           body: opts.body ? JSON.stringify(opts.body) : undefined, signal: ctrl.signal, cache: "no-store" });
+      return await r.json();
+    } finally { clearTimeout(tm); }
+  }
+
+  // ───────── background: silk strands ─────────
+  const cv = $("bg"), cx = cv.getContext("2d");
+  let W, H, energy = 0;
+  function resize() { W = cv.width = innerWidth * devicePixelRatio; H = cv.height = innerHeight * devicePixelRatio; }
+  addEventListener("resize", resize); resize();
+  function drawBg(t) {
+    const g = cx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, "#120a10"); g.addColorStop(.55, "#1d1019"); g.addColorStop(1, "#24121a");
+    cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+    const glow = cx.createRadialGradient(W * .5, H * .45, 0, W * .5, H * .45, Math.max(W, H) * .55);
+    glow.addColorStop(0, `rgba(236,190,170,${.10 + energy * .12})`); glow.addColorStop(1, "rgba(236,190,170,0)");
+    cx.fillStyle = glow; cx.fillRect(0, 0, W, H);
+    cx.lineWidth = 1.1 * devicePixelRatio;
+    const n = 26;
+    for (let k = 0; k < n; k++) {
+      const p = k / n, y0 = H * (.58 + p * .5);
+      cx.beginPath();
+      for (let x = 0; x <= W; x += 18 * devicePixelRatio) {
+        const u = x / W;
+        const y = y0 - H * .34 * Math.sin(u * Math.PI) + Math.sin(u * 5 + t / 2600 + k * .33) * H * (.035 + energy * .03)
+                  + Math.sin(u * 13 - t / 1700 + k) * H * .006;
+        x === 0 ? cx.moveTo(x, y) : cx.lineTo(x, y);
+      }
+      const a = .05 + .10 * Math.sin(p * Math.PI);
+      cx.strokeStyle = k % 3 ? `rgba(236,190,170,${a})` : `rgba(216,173,124,${a * 1.2})`;
+      cx.stroke();
+    }
+  }
+
+  // ───────── orb ─────────
+  const oc = $("orbc"), ox = oc.getContext("2d");
+  function drawOrb(t) {
+    const s = oc.clientWidth * devicePixelRatio; if (oc.width !== s) { oc.width = oc.height = s; }
+    const c = s / 2; ox.clearRect(0, 0, s, s);
+    const st = live.state;
+    const lvl = Math.min(1, Math.max(live.level_out || 0, (live.level_in || 0) * .7) * 3.2);
+    energy += (lvl - energy) * .12;
+    const halo = ox.createRadialGradient(c, c, s * .18, c, c, s * .5);
+    halo.addColorStop(0, `rgba(236,190,170,${.28 + energy * .3})`); halo.addColorStop(1, "rgba(236,190,170,0)");
+    ox.fillStyle = halo; ox.beginPath(); ox.arc(c, c, s * .5, 0, 6.283); ox.fill();
+    const pearl = ox.createRadialGradient(c - s * .08, c - s * .1, s * .02, c, c, s * .3);
+    pearl.addColorStop(0, "#fff3ec"); pearl.addColorStop(.35, "#e9b9a6"); pearl.addColorStop(1, "#5a2f3a");
+    ox.fillStyle = pearl; ox.beginPath(); ox.arc(c, c, s * .27, 0, 6.283); ox.fill();
+    // orbiting strands
+    const col = st === "MUTED" ? "255,138,138" : st === "THINKING" ? "216,173,124" : "251,239,231";
+    for (let k = 0; k < 7; k++) {
+      ox.beginPath();
+      for (let i = 0; i <= 120; i++) {
+        const a = i / 120 * 6.283;
+        const r = s * (.33 + k * .018) + Math.sin(a * (3 + k % 3) + t / (700 + k * 90) + k) * s * (.012 + energy * .05);
+        const x = c + Math.cos(a + t / (9000 - k * 700)) * r, y = c + Math.sin(a + t / (9000 - k * 700)) * r;
+        i ? ox.lineTo(x, y) : ox.moveTo(x, y);
+      }
+      ox.strokeStyle = `rgba(${col},${.18 + .06 * (k % 3)})`; ox.lineWidth = devicePixelRatio; ox.stroke();
+    }
+  }
+  function frame(t) { drawBg(t); drawOrb(t); requestAnimationFrame(frame); }
+
+  // ───────── state ─────────
+  let live = { state: "OFFLINE", log: [] }, lastKey = "", owner = "";
+  async function poll() {
+    try { live = await (await fetch(BASE + "/state", { cache: "no-store" })).json(); owner = live.owner || ""; }
+    catch { live = { state: "OFFLINE", log: [] }; }
+    $("state").textContent = live.state; $("hint").textContent = STATES[live.state] || "";
+    $("mic").classList.toggle("muted", live.state === "MUTED" || !!live.muted);
+    const last = [...(live.log || [])].reverse().find(e => e.who === "ai" || e.who === "user");
+    const key = last ? last.t + last.text : "";
+    if (key !== lastKey) { lastKey = key; $("bubble").innerHTML = last ? `<small>${last.who === "ai" ? "Lumi" : esc(owner || "Tú")}</small>${esc(last.text)}` : ""; }
+    if (live.sys && live.sys.cpu != null) $("sys").textContent = `CPU ${Math.round(live.sys.cpu)}% · RAM ${Math.round(live.sys.ram)}%`;
+  }
+  setInterval(poll, 160); poll();
+
+  // ───────── clock ─────────
+  function tick() {
+    const d = new Date();
+    $("clock").textContent = d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const ds = d.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" });
+    $("date").textContent = ds.charAt(0).toUpperCase() + ds.slice(1);
+  }
+  setInterval(tick, 1000); tick();
+
+  async function loadWeather() {
+    try { const w = await api("/weather", { timeout: 15000 }); if (w.ok) $("wx").textContent = `${w.icon} ${Math.round(w.temp)}° · ${w.text} · ${w.location}`; } catch {}
+  }
+  setInterval(loadWeather, 600000); setTimeout(loadWeather, 1500);
+
+  // ───────── salon ─────────
+  const money = v => (v || 0).toLocaleString("es", { style: "currency", currency: "EUR", maximumFractionDigits: v % 1 ? 2 : 0 });
+  async function loadSalon() {
+    let d; try { d = await api("/salon_today"); } catch { return; }
+    if (!d || !d.ok) return;
+    if (d.salon) $("salon").textContent = d.salon;
+    const now = new Date().toISOString().slice(0, 16);
+    const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const apps = d.appointments || [];
+    $("k-apps").textContent = apps.length;
+    $("k-left").textContent = apps.filter(a => a.status !== "done" && a.start.slice(0, 16) >= nowLocal).length;
+    $("k-cash").textContent = money(d.takings);
+    if (d.next) {
+      const n = d.next;
+      $("next").innerHTML = `<div class="when">${n.start.slice(11, 16)}</div><div class="who">${esc(n.client || "")}</div>
+        <div class="what">${esc(n.service || "")}${n.staff ? " · " + esc(n.staff) : ""}</div>
+        ${n.allergies ? `<div class="warn">⚠ Alergias: ${esc(n.allergies)}</div>` : ""}`;
+    } else $("next").innerHTML = `<div class="empty">${apps.length ? "No quedan más citas hoy" : "Hoy no hay citas"}</div>`;
+    $("timeline").innerHTML = apps.length ? apps.map(a => {
+      const cur = a.start.slice(0, 16) <= nowLocal && a.end.slice(0, 16) > nowLocal && a.status !== "done";
+      return `<div class="slot ${a.status === "done" ? "done" : ""} ${cur ? "now" : ""}"><div class="t">${a.start.slice(11, 16)}</div>
+        <div class="b" style="border-left-color:${esc(a.staff_color || "#ecbea9")}"><div class="c">${esc(a.client || "—")}</div>
+        <div class="s">${esc(a.service || "")}${a.staff ? " · " + esc(a.staff) : ""}${a.allergies ? ' · <span class="al">⚠ alergia</span>' : ""}</div></div></div>`;
+    }).join("") : `<div class="empty">${d.open ? `Abierto de ${d.open} a ${d.close}. Sin citas todavía.` : "Hoy el salón está cerrado."}</div>`;
+    const rows = [];
+    (d.birthdays || []).forEach(b => rows.push(`<div class="row bd"><b>Cumple</b>${esc(b)}</div>`));
+    (d.low_stock || []).forEach(p => rows.push(`<div class="row"><b>Stock</b>${esc(p.name)} · quedan ${p.stock}</div>`));
+    $("alerts").innerHTML = rows.length ? rows.join("") : `<div class="empty">Todo en orden</div>`;
+  }
+  setInterval(loadSalon, 30000); setTimeout(loadSalon, 800);
+
+  // ───────── actions ─────────
+  async function post(path, body, timeout = 15000) {
+    if (live.state === "OFFLINE") { toast("Lumi todavía no está en marcha"); return { ok: false }; }
+    try { return await api(path, { method: "POST", body, timeout }); } catch { return { ok: false }; }
+  }
+  document.querySelectorAll("[data-ask]").forEach(b => b.onclick = () => { toast("Preguntando a Lumi…"); post("/chat", { text: b.dataset.ask }); });
+  document.querySelectorAll("[data-win]").forEach(b => b.onclick = () => post(`/window?page=${b.dataset.win}`));
+  const mute = async () => { try { await fetch(BASE + "/mute", { method: "POST" }); } catch {} };
+  $("mic").onclick = mute; $("orb").onclick = mute;
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
