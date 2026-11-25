@@ -129,7 +129,7 @@ procedure InitializeWizard;
 begin
   NamePage := CreateInputQueryPage(wpWelcome, CustomMessage('NameTitle'), CustomMessage('NameDesc'), '');
   NamePage.Add(CustomMessage('NameLabel'), False);
-  NamePage.Values[0] := '{#STUDENT}';
+  NamePage.Values[0] := 'Mirta';
 
   LangPage := CreateInputOptionPage(NamePage.ID, CustomMessage('LangTitle'), CustomMessage('LangDesc'), '', True, False);
   LangPage.Add('Español');

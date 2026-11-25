@@ -174,7 +174,7 @@ from memory.memory_manager import (
 #   "Rasalgethi"  serena y "sabia"
 #   "Orus" / "Enceladus"  otras masculinas (Enceladus más susurrante)
 # La cadencia de JARVIS (grave, pausada, elegante) la marca el bloque VOICE DELIVERY de prompt.txt.
-VOICE_NAME = "Aoede"   # warm, elegant voice
+VOICE_NAME = "Kore"   # firm, professional voice
 
 # Interrumpir a Lumi hablándole encima (como Tony con JARVIS)
 BARGE_IN            = True     # False = el micro se apaga mientras habla (comportamiento antiguo)
@@ -1295,7 +1295,7 @@ TOOL_DECLARATIONS = [
 def _lumi_rules() -> str:
     """Tool routing + identity rules for Lumi (the personality itself is in core/prompt.txt)."""
     return (
-        "OWNER: you work for " + OWNER + ", who runs the salon. Staff may also talk to you.\n\n"
+        "OWNER: you work for Mirta, who runs the salon. Always call her Mirta, with a professional tone and \"usted\". Staff may also talk to you.\n\n"
         "LANGUAGE: answer in the language you are spoken to (Spanish by default).\n\n"
         "SALON: for appointments, agenda, free slots, clients (history, allergies, colour formulas, preferences), staff, "
         "services and prices, inventory and stock, charging, cash close and reports ALWAYS use the salon tool. For 'when' "

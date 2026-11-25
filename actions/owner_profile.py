@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 _OWNER_FILE = Path(__file__).resolve().parent.parent / "config" / "owner.json"
-_DEFAULT = "the user"
+_DEFAULT = "Mirta"
 
 
 def get_owner_name() -> str:
