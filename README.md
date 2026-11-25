@@ -12,3 +12,11 @@ with an animated desktop (Lively Wallpaper) and a one-click installer.
 3. `dist\Lumi-Setup-<name>.exe` → double-click it on the salon's PC.
 
 Salon data lives in `memory/salon.db` on that PC (daily backups in `memory/backups/`).
+
+## macOS
+1. On the Mac: Code → Download ZIP (logged in to GitHub), it unzips by itself in Downloads.
+2. Right-click **Instalar en Mac.command** → **Open** → **Open** (only the first time, macOS asks).
+3. Answer the small windows (name, language, keys). It installs its own Python + AI components,
+   starts at every login in the background (LaunchAgent) and opens Plash for the animated desktop
+   (`http://127.0.0.1:5055/ui/index`, Browsing Mode on). Allow the microphone when macOS asks.
+Windows-only extras (global hotkeys, some PC-control tools) are not available on Mac.
