@@ -209,6 +209,7 @@
       <button class="pill" id="mic" type="button"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Micro</button>
       <button class="pill" data-panel="slots" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Huecos</button>
       <button class="pill" data-panel="cash" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg>Caja</button>
+      <button class="pill" data-panel="recipes" type="button"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h7M8 11h5"/></svg>Recetas</button>
       <button class="pill" data-panel="stock" type="button"><svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg>Stock</button>
       <button class="pill" data-win="chat" type="button"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg>Chat</button>
       <button class="pill" data-win="boards" type="button"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>Tareas</button>
@@ -389,13 +390,13 @@
   // ───────── Huecos / Caja / Stock: the salon screen (agenda, caja, stock, all editable) ─────────
   // Mac: inside the desktop (it can type there). Windows/Lively: its own window, because Lively
   // only passes the mouse to the wallpaper and the forms need the keyboard.
-  const TABS = { slots: "agenda", cash: "cash", stock: "stock" };
+  const TABS = { slots: "agenda", cash: "cash", stock: "stock", recipes: "recipes" };
   const IS_MAC = /Mac/.test(navigator.platform || navigator.userAgent);
-  function openPanel(kind) {
+  function openPanel(kind, item) {
     const tab = TABS[kind] || "agenda";
     if (live.state === "OFFLINE") { toast("Lumi todavía no está en marcha"); return; }
     if (IS_MAC) {
-      $("p-frame").src = `${BASE}/ui/salon?embed=1&tab=${tab}&r=${Date.now()}`;
+      $("p-frame").src = `${BASE}/ui/salon?embed=1&tab=${tab}${item ? "&item=" + encodeURIComponent(item) : ""}&r=${Date.now()}`;
       $("veil").classList.add("show");
     } else {
       toast("Abriendo…");
@@ -404,6 +405,15 @@
   }
   function closePanel() { $("veil").classList.remove("show"); $("p-frame").src = "about:blank"; loadSalon(); }
   document.querySelectorAll("[data-panel]").forEach(b => b.onclick = () => openPanel(b.dataset.panel));
+  // Lumi asked to show something (e.g. «enséñame la receta de…»): on Mac open it here on the desktop
+  let panelReqTs = null;
+  setInterval(() => {
+    const r = live && live.panel_req;
+    if (!r || r.ts === panelReqTs) return;
+    const first = panelReqTs === null; panelReqTs = r.ts;
+    if (first && Date.now() / 1000 - r.ts > 20) return;          // old request from before this page loaded
+    if (IS_MAC) openPanel(r.tab === "recipes" ? "recipes" : r.tab, r.item);
+  }, 1000);
   $("veil").onclick = e => { if (e.target.id === "veil") closePanel(); };
   window.addEventListener("message", e => { if (e.data === "lumi-close") closePanel(); else if (e.data === "lumi-refresh") loadSalon(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });

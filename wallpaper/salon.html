@@ -113,6 +113,7 @@
     <button data-tab="agenda" type="button">Agenda</button>
     <button data-tab="cash" type="button">Caja</button>
     <button data-tab="stock" type="button">Stock</button>
+    <button data-tab="recipes" type="button">Recetas</button>
     <button data-tab="settings" type="button">Ajustes</button>
   </nav>
   <button class="close" id="close" type="button" aria-label="Cerrar">✕</button>
@@ -234,6 +235,42 @@
       </div>
     </div>
   </section>
+  <!-- ───────── RECETAS ───────── -->
+  <section class="tab" id="tab-recipes">
+    <div class="grid" style="grid-template-columns: 1fr 1.6fr">
+      <div class="box">
+        <h3>Recetas <span class="sp"></span><span style="letter-spacing:0;text-transform:none" id="rc-count"></span></h3>
+        <div class="search" style="margin-bottom:10px"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="rc-q" placeholder="Buscar receta o ingrediente"></div>
+        <div class="chips" id="rc-cats" style="margin-bottom:10px"></div>
+        <div id="rc-list" style="max-height:56vh;overflow:auto"></div>
+        <div class="btns"><button class="b pri" id="rc-new" type="button">+ Nueva receta</button></div>
+      </div>
+      <div class="box">
+        <h3 id="rc-title">Nueva receta</h3>
+        <form id="rc-form" autocomplete="off">
+          <input type="hidden" id="rc-id">
+          <div class="row2" style="grid-template-columns:2fr 1fr">
+            <div><label for="rc-name">Nombre</label><input id="rc-name" placeholder="Crema hidratante de karité" required></div>
+            <div><label for="rc-cat">Tipo</label><select id="rc-cat"></select></div>
+          </div>
+          <label for="rc-ing">Ingredientes (uno por línea, con cantidad)</label>
+          <textarea id="rc-ing" rows="7" placeholder="50 g manteca de karité&#10;20 ml aceite de argán&#10;5 gotas de aceite esencial de lavanda"></textarea>
+          <label for="rc-steps">Preparación / aplicación</label>
+          <textarea id="rc-steps" rows="7" placeholder="1. Fundir la manteca al baño maría…"></textarea>
+          <label for="rc-notes">Notas</label>
+          <textarea id="rc-notes" rows="3" placeholder="Para cabello seco. Dura 3 meses en frío."></textarea>
+          <div class="btns">
+            <button class="b pri" type="submit">Guardar</button>
+            <button class="b" type="button" id="rc-print">Imprimir</button>
+            <button class="b danger" type="button" id="rc-del" hidden>Borrar</button>
+          </div>
+          <div class="hint">También por voz: «Lumi, apunta una receta…» o «Lumi, enséñame la receta de…».</div>
+        </form>
+      </div>
+    </div>
+  </section>
+
   <!-- ───────── AJUSTES ───────── -->
   <section class="tab" id="tab-settings">
     <div class="grid" style="grid-template-columns: 1.5fr 1fr">
@@ -314,7 +351,7 @@
   function show(t) {
     tab = t; document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
     document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("on", s.id === "tab-" + t));
-    ({ agenda: loadDay, cash: loadCash, stock: loadStock, settings: loadSettings })[t]();
+    ({ agenda: loadDay, cash: loadCash, stock: loadStock, recipes: loadRecipes, settings: loadSettings })[t]();
   }
   document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
   $("close").onclick = () => { if (embedded) parent.postMessage("lumi-close", "*"); else window.close(); };
@@ -595,7 +632,55 @@
     const r = await act({ action: "methods_save", methods: [...meta.methods, v] }); if (r.ok) { $("m-name").value = ""; loadSettings(); }
   };
 
-  loadMeta().then(() => show(["agenda", "cash", "stock", "settings"].includes(params.get("tab")) ? params.get("tab") : "agenda"));
+
+  // ───────── recetas ─────────
+  let recipes = [], rcCats = [], rcCat = "", rcCur = null, wantRecipe = params.get("item") || "";
+  async function loadRecipes(selectId) {
+    let d; try { d = await get("/salon_panel?kind=recipes"); } catch { toast("Lumi no responde", true); return; }
+    recipes = d.items || []; rcCats = d.cats || [];
+    $("rc-cat").innerHTML = rcCats.map(c => `<option>${esc(c)}</option>`).join("");
+    const want = selectId || wantRecipe; wantRecipe = "";
+    renderRecipes();
+    const r = want ? recipes.find(x => String(x.id) === String(want)) : rcCur && recipes.find(x => x.id === rcCur.id);
+    if (r) editRecipe(r); else if (!rcCur) editRecipe(null);
+  }
+  function renderRecipes() {
+    const words = norm($("rc-q").value).split(/\s+/).filter(Boolean);
+    const used = [...new Set(recipes.map(r => r.category).filter(Boolean))];
+    $("rc-cats").innerHTML = ["", ...used].map(c => `<button type="button" class="chip ${c === rcCat ? "sel" : ""}" data-c="${esc(c)}" style="padding:5px 10px;font-size:13px">${c ? esc(c) : "Todas"}</button>`).join("");
+    $("rc-cats").querySelectorAll("button").forEach(b => b.onclick = () => { rcCat = b.dataset.c; renderRecipes(); });
+    const list = recipes.filter(r => (!rcCat || r.category === rcCat) && words.every(w => norm(r.name + " " + r.ingredients + " " + r.category + " " + r.notes).includes(w)));
+    $("rc-count").textContent = `${recipes.length} en total`;
+    $("rc-list").innerHTML = list.length ? list.map(r => `<div class="appt" data-id="${r.id}" style="grid-template-columns:1fr auto;cursor:pointer;${rcCur && rcCur.id === r.id ? "background:rgba(201,192,143,.1);border-radius:10px;padding-left:8px" : ""}">
+        <div><div class="c">${esc(r.name)}</div><div class="s">${esc(r.category || "")}${r.ingredients ? " · " + esc(r.ingredients.split("\n").filter(Boolean).length) + " ingredientes" : ""}</div></div><div class="s">›</div></div>`).join("")
+      : `<div class="empty">${recipes.length ? "Ninguna receta con esa búsqueda." : "Todavía no hay recetas. Pulse «+ Nueva receta» o díctesela a Lumi."}</div>`;
+    $("rc-list").querySelectorAll(".appt").forEach(el => el.onclick = () => editRecipe(recipes.find(r => r.id == el.dataset.id)));
+  }
+  function editRecipe(r) {
+    rcCur = r || null;
+    $("rc-title").textContent = r ? r.name : "Nueva receta";
+    $("rc-id").value = r ? r.id : ""; $("rc-name").value = r ? r.name : ""; $("rc-cat").value = r && r.category ? r.category : (rcCats[0] || "");
+    $("rc-ing").value = r ? r.ingredients || "" : ""; $("rc-steps").value = r ? r.steps || "" : ""; $("rc-notes").value = r ? r.notes || "" : "";
+    $("rc-del").hidden = !r; renderRecipes();
+  }
+  $("rc-q").oninput = renderRecipes;
+  $("rc-new").onclick = () => { editRecipe(null); $("rc-name").focus(); };
+  $("rc-form").onsubmit = async e => {
+    e.preventDefault();
+    const r = await act({ action: "recipe_save", id: $("rc-id").value, name: $("rc-name").value, category: $("rc-cat").value,
+                          ingredients: $("rc-ing").value, steps: $("rc-steps").value, notes: $("rc-notes").value });
+    if (r.ok) loadRecipes(r.id);
+  };
+  $("rc-del").onclick = async e => { if (!armed(e.target) || !rcCur) return; const r = await act({ action: "recipe_delete", id: rcCur.id }); if (r.ok) { rcCur = null; loadRecipes(); } };
+  $("rc-print").onclick = () => {
+    const w = window.open("", "_blank"); if (!w) return;
+    const L = s => esc(s || "").replace(/\n/g, "<br>");
+    w.document.write(`<html><head><meta charset="utf-8"><title>${esc($("rc-name").value)}</title><style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;color:#222}h1{font-weight:500}h2{font-size:14px;letter-spacing:.15em;text-transform:uppercase;color:#777;margin-top:26px}</style></head>
+      <body><h1>${esc($("rc-name").value)}</h1><div>${esc($("rc-cat").value)}</div><h2>Ingredientes</h2><p>${L($("rc-ing").value)}</p><h2>Preparación</h2><p>${L($("rc-steps").value)}</p>${$("rc-notes").value ? `<h2>Notas</h2><p>${L($("rc-notes").value)}</p>` : ""}</body></html>`);
+    w.document.close(); w.focus(); w.print();
+  };
+
+  loadMeta().then(() => show(["agenda", "cash", "stock", "recipes", "settings"].includes(params.get("tab")) ? params.get("tab") : "agenda"));
   setInterval(() => { if (tab === "cash" && !document.querySelector("#c-sales input, .inline")) loadCash(); }, 60000);
 })();
 </script>

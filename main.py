@@ -324,6 +324,7 @@ except Exception as _e:
 try:
     from actions import salon as salon_mod
     _OFFICE_TOOLS.append(salon_mod.TOOL_DECLARATION)
+    _OFFICE_TOOLS.append(salon_mod.RECIPES_DECLARATION)
 except Exception as _e:
     print(f"[Lumi] Salon system disabled: {_e}")
     salon_mod = None
@@ -1307,6 +1308,9 @@ def _lumi_rules() -> str:
     """Tool routing + identity rules for Lumi (the personality itself is in core/prompt.txt)."""
     return (
         "OWNER: you work for Mirta, who runs the salon. Always call her Mirta, with a professional tone and \"usted\". Staff may also talk to you.\n\n"
+        "RECIPES: Mirta's notebook of cream/mask/treatment recipes and colour formulas is the recipes tool. «La receta de "
+        "…», «enséñame la crema de…» → recipes action=get (it shows it on the screen). To save one she dictates → action=add "
+        "with name, ingredients (one per line with quantities), steps and notes; ask briefly for what's missing.\n\n"
         "MONEY: the salon is in the UK. All prices and cash are in British pounds (£); say «libras» (e.g. «25 libras»), never euros.\n\n"
         "CONVERSATION: once Mirta has called you, keep talking naturally without her repeating your name. If what you hear "
         "is clearly people talking to each other (clients, staff) and not to you, stay silent.\n\n"
@@ -1837,6 +1841,8 @@ class JarvisLive:
             elif name == "salon" and salon_mod is not None:
                 r = await loop.run_in_executor(None, lambda: salon_mod.salon_tool(parameters=args, player=self.ui, speak=self.speak))
                 result = r or "Done."
+            elif name == "recipes" and salon_mod is not None:
+                result = await loop.run_in_executor(None, lambda: salon_mod.recipes_tool(args, player=self.ui, speak=self.speak))
             elif name == "boards" and boards_mod is not None:
                 r = await loop.run_in_executor(None, lambda: boards_mod.boards_tool(parameters=args, player=self.ui, speak=self.speak))
                 result = r or "Done."

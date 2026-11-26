@@ -665,6 +665,15 @@ def files_action(body: dict) -> dict:
     return {"ok": False, "msg": "Acción desconocida"}
 
 
+def request_panel(tab: str, item: str = ""):
+    """Asks the desktop to open the salon screen on a tab (e.g. a recipe Lumi was asked for)."""
+    with _lock:
+        _data["panel_req"] = {"tab": tab, "item": item, "ts": time.time()}
+    if os.name == "nt":                     # Windows/Lively: the screen is its own window
+        from urllib.parse import urlencode
+        open_window("salon", urlencode({"tab": tab, "item": item}))
+
+
 def chat(text: str, file_path: str = "") -> tuple[bool, str]:
     text = (text or "").strip()
     if not _text_sender:
@@ -1233,7 +1242,7 @@ class _Handler(BaseHTTPRequestHandler):
             extra = "menu=1" if q.get("menu") else ""
             if q.get("tab"):
                 from urllib.parse import urlencode
-                extra = urlencode({k: q[k][0] for k in ("tab", "date", "time") if q.get(k)})
+                extra = urlencode({k: q[k][0] for k in ("tab", "date", "time", "item") if q.get(k)})
             ok = open_window(q.get("page", [""])[0], extra)
             self._send_json({"ok": ok}, 200 if ok else 400)
         elif route == "/settings":

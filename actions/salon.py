@@ -54,6 +54,9 @@ CREATE TABLE IF NOT EXISTS sales (
   total REAL, tip REAL DEFAULT 0, method TEXT DEFAULT 'efectivo', items TEXT DEFAULT '[]', notes TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS photos (
   id INTEGER PRIMARY KEY, client_id INTEGER, path TEXT, kind TEXT, note TEXT DEFAULT '', ts TEXT);
+CREATE TABLE IF NOT EXISTS recipes (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, category TEXT DEFAULT '', ingredients TEXT DEFAULT '',
+  steps TEXT DEFAULT '', notes TEXT DEFAULT '', created TEXT, updated TEXT);
 """
 
 DEFAULT_SERVICES = [
@@ -749,6 +752,8 @@ def panel_data(kind: str, day_s: str = "") -> dict:
                 "pending": [{"id": a["id"], "t": a["start"][11:16], "client": a["client"], "service": a["service"], "price": a["price"]}
                             for a in appointments_on(sel) if a["status"] in ("booked", "confirmed")
                             and a["start"] <= datetime.now().isoformat()]}
+    if kind == "recipes":
+        return {"ok": True, "kind": kind, "items": recipes_all(), "cats": RECIPE_CATS}
     if kind == "stock":
         rows = q("""SELECT p.*, s.name supplier FROM products p LEFT JOIN suppliers s ON s.id=p.supplier_id
                     WHERE p.active=1 ORDER BY (p.stock<=p.min_stock) DESC, p.category, p.name""")
@@ -758,6 +763,113 @@ def panel_data(kind: str, day_s: str = "") -> dict:
         return {"ok": True, "kind": kind, "items": items, "low": sum(i["low"] for i in items),
                 "value": round(sum(r["stock"] * (r["cost"] or 0) for r in rows), 2)}
     return {"ok": False, "error": "unknown panel"}
+
+
+# ───────────────────────── recipes (cremas, mascarillas, mezclas, fórmulas) ─────────────────────────
+RECIPE_CATS = ["Crema", "Mascarilla", "Tratamiento", "Color / fórmula", "Mezcla", "Otro"]
+
+
+def recipes_all() -> list[dict]:
+    return q("SELECT * FROM recipes ORDER BY lower(name)")
+
+
+def find_recipe(query: str):
+    return _best(recipes_all(), query, minimum=30)
+
+
+def recipe_save(name: str, ingredients: str = "", steps: str = "", notes: str = "", category: str = "",
+                rid: int | None = None) -> dict:
+    name = " ".join((name or "").split())[:120]
+    if not name:
+        raise ValueError("La receta necesita un nombre.")
+    ex = q1("SELECT * FROM recipes WHERE id=?", (rid,)) if rid else q1("SELECT * FROM recipes WHERE lower(name)=lower(?)", (name,))
+    vals = (name, (category or "").strip()[:40], (ingredients or "").strip()[:4000], (steps or "").strip()[:6000],
+            (notes or "").strip()[:2000], now_iso())
+    if ex:
+        run("UPDATE recipes SET name=?, category=?, ingredients=?, steps=?, notes=?, updated=? WHERE id=?", vals + (ex["id"],))
+        return q1("SELECT * FROM recipes WHERE id=?", (ex["id"],))
+    new_id = run("INSERT INTO recipes(name, category, ingredients, steps, notes, updated, created) VALUES(?,?,?,?,?,?,?)",
+                 vals + (now_iso(),))
+    return q1("SELECT * FROM recipes WHERE id=?", (new_id,))
+
+
+def recipe_text(r: dict) -> str:
+    parts = [f"Receta «{r['name']}»" + (f" ({r['category']})" if r.get("category") else "") + "."]
+    if r.get("ingredients"):
+        parts.append("Ingredientes: " + "; ".join(x.strip() for x in r["ingredients"].splitlines() if x.strip()) + ".")
+    if r.get("steps"):
+        parts.append("Preparación: " + " ".join(x.strip() for x in r["steps"].splitlines() if x.strip()))
+    if r.get("notes"):
+        parts.append("Notas: " + r["notes"])
+    return " ".join(parts)
+
+
+def _show_recipe(r: dict | None = None):
+    """Opens the «Recetas» screen (on the desktop on Mac, as a window on Windows) with that recipe."""
+    try:
+        from actions import hud_bridge
+        hud_bridge.request_panel("recipes", str(r["id"]) if r else "")
+    except Exception as e:
+        print(f"[Lumi] Recetas: no pude mostrarla: {e}")
+
+
+def recipes_tool(parameters: dict, player=None, speak=None) -> str:
+    p = parameters or {}
+    act = (p.get("action") or "get").lower()
+    name = (p.get("name") or "").strip()
+    if act in ("add", "save", "update"):
+        old = find_recipe(name) if act == "update" and name else None
+        try:
+            r = recipe_save(name or (old or {}).get("name", ""),
+                            p.get("ingredients") if p.get("ingredients") is not None else (old or {}).get("ingredients", ""),
+                            p.get("steps") if p.get("steps") is not None else (old or {}).get("steps", ""),
+                            p.get("notes") if p.get("notes") is not None else (old or {}).get("notes", ""),
+                            p.get("category") or (old or {}).get("category", ""), (old or {}).get("id"))
+        except ValueError as e:
+            return str(e)
+        _show_recipe(r)
+        return f"Receta «{r['name']}» guardada y abierta en pantalla."
+    if act == "list":
+        rs = recipes_all()
+        if not rs:
+            return "Todavía no hay recetas guardadas."
+        _show_recipe(None)
+        return f"{len(rs)} receta(s): " + ", ".join(r["name"] for r in rs[:40]) + "."
+    if act == "delete":
+        r = find_recipe(name)
+        if not r:
+            return f"No encuentro ninguna receta parecida a «{name}»."
+        run("DELETE FROM recipes WHERE id=?", (r["id"],))
+        return f"Receta «{r['name']}» borrada."
+    if act == "open":
+        _show_recipe(find_recipe(name) if name else None)
+        return "Recetas abiertas en pantalla."
+    # get / show
+    r = find_recipe(name)
+    if not r:
+        rs = recipes_all()
+        hint = (" Las que hay: " + ", ".join(x["name"] for x in rs[:15]) + ".") if rs else " Todavía no hay recetas guardadas."
+        return f"No encuentro ninguna receta parecida a «{name}».{hint}"
+    _show_recipe(r)
+    return recipe_text(r) + " (Ya está en pantalla: dile a Mirta que la tiene delante; léela solo si te lo pide.)"
+
+
+RECIPES_DECLARATION = {
+    "name": "recipes",
+    "description": ("Mirta's recipe notebook for creams, masks, treatments, colour formulas and mixes. "
+                    "get = show a recipe by its name on the screen (also 'enséñame / dime la receta de…'); "
+                    "add = save a new one (dictated or explained by voice: put the name, ingredients one per line with "
+                    "quantities, the steps, notes, category); update = change one; list; delete (only with a clear yes); "
+                    "open = open the recipe notebook on screen."),
+    "parameters": {"type": "OBJECT", "properties": {
+        "action":      {"type": "STRING", "description": "get | add | update | list | delete | open"},
+        "name":        {"type": "STRING", "description": "Recipe name (or words of it)"},
+        "category":    {"type": "STRING", "description": "Crema | Mascarilla | Tratamiento | Color / fórmula | Mezcla | Otro"},
+        "ingredients": {"type": "STRING", "description": "One ingredient per line, with quantity"},
+        "steps":       {"type": "STRING", "description": "How to make / apply it"},
+        "notes":       {"type": "STRING", "description": "Extra notes (for which hair, warnings, cost...)"}},
+        "required": ["action"]},
+}
 
 
 def panel_meta() -> dict:
@@ -928,6 +1040,16 @@ def panel_action(b: dict) -> dict:
                 return {"ok": False, "msg": "Deja al menos una forma de pago."}
             set_setting("pay_methods", list(dict.fromkeys(ms)))
             return {"ok": True, "msg": "Formas de pago guardadas."}
+        if a == "recipe_save":
+            try:
+                r = recipe_save(b.get("name", ""), b.get("ingredients", ""), b.get("steps", ""), b.get("notes", ""),
+                                b.get("category", ""), int(b["id"]) if b.get("id") else None)
+            except ValueError as e:
+                return {"ok": False, "msg": str(e)}
+            return {"ok": True, "msg": f"Receta «{r['name']}» guardada.", "id": r["id"]}
+        if a == "recipe_delete":
+            run("DELETE FROM recipes WHERE id=?", (int(b["id"]),))
+            return {"ok": True, "msg": "Receta borrada."}
         if a == "product_delete":
             run("UPDATE products SET active=0 WHERE id=?", (int(b["id"]),))
             return {"ok": True, "msg": "Producto quitado del inventario."}
