@@ -177,7 +177,7 @@
 <script>
 (() => {
   const BASE = "http://127.0.0.1:5055";
-  const TOKEN = "b44a3f6f88c95bc3a19fcde88eead22c657b4f56";
+  const TOKEN = "__HUD_TOKEN__";
   const AUTH = { "X-Lumi-Token": TOKEN };
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -308,7 +308,7 @@
     (d.low_stock || []).forEach(p => rows.push(`<div class="row"><b>Stock</b>${esc(p.name)} · quedan ${p.stock}</div>`));
     $("alerts").innerHTML = rows.length ? rows.join("") : `<div class="empty">Todo en orden</div>`;
   }
-  setInterval(loadSalon, 30000); setTimeout(loadSalon, 800);
+  setInterval(loadSalon, 10000); setTimeout(loadSalon, 800);
 
   // ───────── actions ─────────
   async function post(path, body, timeout = 15000) {
@@ -341,7 +341,7 @@
   function closePanel() { $("veil").classList.remove("show"); $("p-frame").src = "about:blank"; loadSalon(); }
   document.querySelectorAll("[data-panel]").forEach(b => b.onclick = () => openPanel(b.dataset.panel));
   $("veil").onclick = e => { if (e.target.id === "veil") closePanel(); };
-  window.addEventListener("message", e => { if (e.data === "lumi-close") closePanel(); });
+  window.addEventListener("message", e => { if (e.data === "lumi-close") closePanel(); else if (e.data === "lumi-refresh") loadSalon(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
   const mute = async () => { try { await fetch(BASE + "/mute", { method: "POST" }); } catch {} };
   $("mic").onclick = mute; $("orb").onclick = mute;

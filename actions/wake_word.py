@@ -22,14 +22,14 @@ WAKE_WORDS = ["lumi", "oye lumi", "hola lumi", "ey lumi", "hey lumi", "lumy", "l
               # «Lumi» is not a Spanish word: the small model may not know it, so also listen for what it
               # sounds like to the model (only the ones it knows are used)
               "lu mi", "lo mi", "luz mi", "lumbre", "lumen", "luni", "humi", "loomi", "lumie", "oye lu mi", "hola lu mi"]
-_WAKE_RE = re.compile(r"\b(lumi|lumy|lomi|lu mi|lo mi|luz mi|lumbre|lumen|luni|humi|loomi|lumie)\b")
+_WAKE_RE = re.compile(r"\b(lumi|lumí|lumy|lomi|lomí|lu mi|lo mi|luz mi|lumbre|lumen|lume|lumie|loomi|humi|yumi|rumi|luni|lumis)\b")
 SAMPLE_RATE = 16000
 
 
 class VoskSpotter:
     """Reconocedor con gramática cerrada: solo entiende el nombre (lo demás es [unk])."""
 
-    def __init__(self, words=WAKE_WORDS, model=None):
+    def __init__(self, words=WAKE_WORDS, model=None, free=True):
         import vosk
         vosk.SetLogLevel(-1)
         if model is None:
@@ -39,23 +39,32 @@ class VoskSpotter:
         if hasattr(model, "find_word"):        # drop words the model doesn't know (they'd break the grammar)
             known = [w for w in known if all(model.find_word(x) >= 0 for x in w.split())]
         self.words = known
-        if known:
-            grammar = json.dumps(known + ["[unk]"], ensure_ascii=False)
-            self.rec = vosk.KaldiRecognizer(model, SAMPLE_RATE, grammar)
-        else:                                   # none known: free recognition + matching what it hears
-            self.rec = vosk.KaldiRecognizer(model, SAMPLE_RATE)
+        # two listeners on the same audio: one that only knows the name (fast, precise when it knows the word)
+        # and one that understands everything (catches «Lumi» said alone, which the first one often misses)
+        self.rec = vosk.KaldiRecognizer(model, SAMPLE_RATE, json.dumps(known + ["[unk]"], ensure_ascii=False)) if known else None
+        self.free = vosk.KaldiRecognizer(model, SAMPLE_RATE) if free else None
+        if self.rec is None and self.free is None:
+            self.free = vosk.KaldiRecognizer(model, SAMPLE_RATE)
+
+    @staticmethod
+    def _one(rec, pcm: bytes) -> str:
+        if rec is None:
+            return ""
+        if rec.AcceptWaveform(pcm):
+            return json.loads(rec.Result()).get("text", "")
+        return json.loads(rec.PartialResult()).get("partial", "")
 
     def accept(self, pcm: bytes) -> str:
-        """Devuelve el texto reconocido hasta ahora (parcial o final)."""
-        if self.rec.AcceptWaveform(pcm):
-            return json.loads(self.rec.Result()).get("text", "")
-        return json.loads(self.rec.PartialResult()).get("partial", "")
+        """Devuelve el texto reconocido hasta ahora (parcial o final) por los dos oyentes."""
+        return (self._one(self.rec, pcm) + " | " + self._one(self.free, pcm)).strip(" |")
 
     def reset(self):
-        try:
-            self.rec.Reset()
-        except Exception:
-            pass
+        for r in (self.rec, self.free):
+            try:
+                if r is not None:
+                    r.Reset()
+            except Exception:
+                pass
 
 
 class WakeWord:
@@ -87,7 +96,7 @@ class WakeWord:
         if not self.ready or self.spotter is None or not hasattr(self.spotter, "model"):
             return None
         try:
-            return VoskSpotter(phrases, model=self.spotter.model)
+            return VoskSpotter(phrases, model=self.spotter.model, free=False)
         except Exception as e:
             self.log(f"ACTIVACIÓN: no pude crear el detector de frases ({e})")
             return None

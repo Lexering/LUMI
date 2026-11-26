@@ -63,6 +63,19 @@ DEFAULT_SERVICES = [
     ("Balayage", "Color", 150, 95), ("Matiz / baño de color", "Color", 30, 18),
     ("Tratamiento hidratante", "Tratamiento", 30, 20), ("Keratina / alisado", "Tratamiento", 150, 120),
 ]
+# Women's cuts (added once to existing salons too; prices/durations are a starting point, editable)
+WOMEN_CUTS = [
+    ("Corte bob", 45, 28), ("Corte long bob (lob)", 45, 28), ("Corte bob francés", 45, 30), ("Corte bob asimétrico", 50, 30),
+    ("Corte bob en capas", 50, 30), ("Corte pixie", 40, 25), ("Corte bixie", 45, 28), ("Corte garçon", 40, 25),
+    ("Corte melena recta", 40, 25), ("Corte melena en capas", 50, 30), ("Corte en capas largas", 50, 30),
+    ("Corte butterfly", 55, 32), ("Corte shag", 55, 32), ("Corte wolf cut", 55, 32), ("Corte mullet", 50, 30),
+    ("Corte en V", 45, 28), ("Corte en U", 45, 28), ("Corte recto (blunt)", 40, 25), ("Corte desfilado", 45, 28),
+    ("Corte degradado mujer", 45, 28), ("Corte undercut mujer", 45, 28), ("Corte rapado / buzz mujer", 30, 18),
+    ("Corte hime", 50, 30), ("Corte jellyfish", 55, 32), ("Corte octopus", 55, 32), ("Corte hush cut", 55, 32),
+    ("Corte Rachel", 50, 30), ("Corte rizado (método curly)", 60, 38), ("Corte en seco (rizos)", 60, 38),
+    ("Corte flequillo", 15, 8), ("Corte flequillo cortina", 15, 8), ("Saneado de puntas", 25, 15),
+    ("Corte + lavado + secado", 60, 35), ("Corte + peinado", 75, 42), ("Corte novia / evento", 60, 40),
+]
 DEFAULT_HOURS = {  # weekday (0=Monday) -> [open, close]; missing = closed
     "0": ["09:30", "20:00"], "1": ["09:30", "20:00"], "2": ["09:30", "20:00"],
     "3": ["09:30", "20:00"], "4": ["09:30", "20:00"], "5": ["09:00", "14:00"],
@@ -93,6 +106,11 @@ def db() -> sqlite3.Connection:
             if not _conn.execute("SELECT 1 FROM services LIMIT 1").fetchone():
                 _conn.executemany("INSERT INTO services(name, category, duration_min, price) VALUES (?,?,?,?)",
                                   DEFAULT_SERVICES)
+            if not get_setting("women_cuts_v1", False, _conn):
+                have = {r[0].lower() for r in _conn.execute("SELECT name FROM services").fetchall()}
+                _conn.executemany("INSERT INTO services(name, category, duration_min, price) VALUES (?,?,?,?)",
+                                  [(n, "Corte mujer", m, p) for n, m, p in WOMEN_CUTS if n.lower() not in have])
+                set_setting("women_cuts_v1", True, _conn)
             if get_setting("hours", None, _conn) is None:
                 set_setting("hours", DEFAULT_HOURS, _conn)
                 set_setting("slot_min", 15, _conn)
@@ -611,7 +629,66 @@ def today_summary() -> dict:
     }
 
 
-def panel_data(kind: str) -> dict:
+def cash_history(days: int = 90) -> list[dict]:
+    """One row per day with sales (newest first) for the cash history table."""
+    since = (date.today() - timedelta(days=days)).isoformat()
+    rows = q("""SELECT substr(ts,1,10) d, method, SUM(total) t, SUM(tip) tip, COUNT(*) n FROM sales
+                WHERE ts>=? GROUP BY d, method""", (since,))
+    out: dict[str, dict] = {}
+    for r in rows:
+        x = out.setdefault(r["d"], {"date": r["d"], "total": 0.0, "tips": 0.0, "tickets": 0,
+                                    "efectivo": 0.0, "tarjeta": 0.0, "bizum": 0.0, "otros": 0.0})
+        x["total"] += r["t"] or 0; x["tips"] += r["tip"] or 0; x["tickets"] += r["n"]
+        x[r["method"] if r["method"] in ("efectivo", "tarjeta", "bizum") else "otros"] += r["t"] or 0
+    done = {r["d"]: r["n"] for r in q("""SELECT substr(start,1,10) d, COUNT(*) n FROM appointments
+                                         WHERE status='done' AND start>=? GROUP BY d""", (since,))}
+    res = []
+    for d in sorted(out, reverse=True):
+        x = out[d]
+        x.update({k: round(x[k], 2) for k in ("total", "tips", "efectivo", "tarjeta", "bizum", "otros")})
+        x["services"] = done.get(d, 0)
+        x["label"] = fday(date.fromisoformat(d))
+        res.append(x)
+    return res
+
+
+def week_report(ref: date | None = None) -> str:
+    """Summary of the week (Monday to ref), day by day, to say at the end of the week."""
+    ref = ref or date.today()
+    mon = ref - timedelta(days=ref.weekday())
+    end = (ref + timedelta(days=1)).isoformat()
+    per = {r["d"]: r for r in q("""SELECT substr(ts,1,10) d, SUM(total) t, COUNT(*) n FROM sales WHERE ts>=? AND ts<?
+                                   GROUP BY d""", (mon.isoformat(), end))}
+    tot = sum(r["t"] or 0 for r in per.values()); n = sum(r["n"] for r in per.values())
+    pm = mon - timedelta(days=7)
+    prev = q1("SELECT COALESCE(SUM(total),0) t FROM sales WHERE ts>=? AND ts<?", (pm.isoformat(), (pm + timedelta(days=ref.weekday() + 1)).isoformat()))["t"]
+    days = []
+    for i in range(ref.weekday() + 1):
+        d = mon + timedelta(days=i)
+        r = per.get(d.isoformat())
+        if r or _hours_for(d):
+            days.append(f"{DIAS[d.weekday()]} {(r['t'] if r else 0):.0f} €")
+    lines = [f"Resumen de la semana: {tot:.2f} € en {n} ticket(s)."]
+    if days:
+        lines.append("Por días: " + ", ".join(days) + ".")
+    if per:
+        best = max(per.values(), key=lambda r: r["t"] or 0)
+        lines.append(f"El mejor día fue el {fday(date.fromisoformat(best['d']))} con {best['t']:.2f} €.")
+    if prev:
+        diff = (tot - prev) / prev * 100
+        lines.append(f"Respecto a la semana pasada: {'+' if diff >= 0 else ''}{diff:.0f} %.")
+    top = q("""SELECT s.name, COUNT(*) n FROM appointments ap JOIN services s ON s.id=ap.service_id
+               WHERE ap.status='done' AND ap.start>=? AND ap.start<? GROUP BY s.id ORDER BY n DESC LIMIT 3""", (mon.isoformat(), end))
+    if top:
+        lines.append("Servicios más hechos: " + ", ".join(f"{x['name']} ({x['n']})" for x in top) + ".")
+    return " ".join(lines)
+
+
+def _last_open_day_of_week(d: date) -> bool:
+    return all(not _hours_for(d + timedelta(days=i)) for i in range(1, 7 - d.weekday()))
+
+
+def panel_data(kind: str, day_s: str = "") -> dict:
     """Structured data for the desktop panels (Huecos, Caja, Stock)."""
     today = date.today()
     if kind == "slots":
@@ -637,7 +714,11 @@ def panel_data(kind: str) -> dict:
                    (a.isoformat(), b.isoformat()))
             return {"total": round(r["t"], 2), "tips": round(r["tip"], 2), "tickets": r["n"]}
         tm = today + timedelta(days=1)
-        s, e = today.isoformat(), tm.isoformat()
+        try:
+            sel = date.fromisoformat(day_s) if day_s else today
+        except ValueError:
+            sel = today
+        s, e = sel.isoformat(), (sel + timedelta(days=1)).isoformat()
         sales = q("""SELECT sa.id, sa.ts, sa.total, sa.tip, sa.method, sa.items, c.name client, st.name staff FROM sales sa
                      LEFT JOIN clients c ON c.id=sa.client_id LEFT JOIN staff st ON st.id=sa.staff_id
                      WHERE sa.ts>=? AND sa.ts<? ORDER BY sa.ts DESC""", (s, e))
@@ -646,7 +727,8 @@ def panel_data(kind: str) -> dict:
                 return ", ".join(i.get("name", "") for i in json.loads(js or "[]"))
             except Exception:
                 return ""
-        return {"ok": True, "kind": kind,
+        return {"ok": True, "kind": kind, "date": sel.isoformat(), "label": fday(sel) if sel != today else "hoy",
+                "day": tot(sel, sel + timedelta(days=1)), "history": cash_history(),
                 "today": tot(today, tm), "week": tot(today - timedelta(days=today.weekday()), tm),
                 "month": tot(today.replace(day=1), tm),
                 "by_method": [{"method": m["method"], "total": round(m["t"], 2)} for m in
@@ -657,7 +739,7 @@ def panel_data(kind: str) -> dict:
                 "sales": [{"id": r["id"], "t": r["ts"][11:16], "client": r["client"] or "", "staff": r["staff"] or "", "total": r["total"],
                            "tip": r["tip"], "method": r["method"], "what": what(r["items"])} for r in sales],
                 "pending": [{"id": a["id"], "t": a["start"][11:16], "client": a["client"], "service": a["service"], "price": a["price"]}
-                            for a in appointments_on(today) if a["status"] in ("booked", "confirmed")
+                            for a in appointments_on(sel) if a["status"] in ("booked", "confirmed")
                             and a["start"] <= datetime.now().isoformat()]}
     if kind == "stock":
         rows = q("""SELECT p.*, s.name supplier FROM products p LEFT JOIN suppliers s ON s.id=p.supplier_id
@@ -672,8 +754,8 @@ def panel_data(kind: str) -> dict:
 
 def panel_meta() -> dict:
     return {"ok": True,
-            "services": [{"id": s["id"], "name": s["name"], "min": s["duration_min"], "price": s["price"]}
-                         for s in q("SELECT * FROM services WHERE active=1 ORDER BY name")],
+            "services": [{"id": s["id"], "name": s["name"], "cat": s["category"] or "", "min": s["duration_min"], "price": s["price"]}
+                         for s in q("SELECT * FROM services WHERE active=1 ORDER BY category, name")],
             "staff": [{"id": s["id"], "name": s["name"]} for s in q("SELECT id, name FROM staff WHERE active=1 ORDER BY name")],
             "clients": [{"id": c["id"], "name": c["name"], "phone": c["phone"] or ""}
                         for c in q("SELECT id, name, phone FROM clients ORDER BY name LIMIT 2000")],
@@ -817,11 +899,17 @@ def _auto_loop():
                 if s["low_stock"]:
                     msg += f" Hay {len(s['low_stock'])} producto(s) con stock bajo."
                 alert(msg, key="salon-morning-" + key, cooldown_s=20 * 3600)
-            if now.hour >= 19 and done.get("evening") != key:
+            hours = _hours_for(now.date())
+            if hours and now >= hours[1] - timedelta(minutes=10) and done.get("evening") != key:
                 done["evening"] = key
-                tomorrow = now.date() + timedelta(days=1)
-                n = len(appointments_on(tomorrow))
-                alert(report("today") + f" Mañana hay {n} cita(s).", key="salon-evening-" + key, cooldown_s=20 * 3600)
+                nxt = now.date() + timedelta(days=1)
+                while not _hours_for(nxt) and nxt < now.date() + timedelta(days=8):
+                    nxt += timedelta(days=1)
+                n = len(appointments_on(nxt))
+                alert("Resumen del día. " + report("today") + f" El {fday(nxt)} hay {n} cita(s).",
+                      key="salon-evening-" + key, cooldown_s=20 * 3600)
+                if _last_open_day_of_week(now.date()):
+                    alert(week_report(now.date()), key="salon-week-" + key, cooldown_s=5 * 86400)
             if now.weekday() == 0 and now.hour >= 10 and done.get("weekly") != key:
                 done["weekly"] = key
                 cutoff = (now.date() - timedelta(days=60)).isoformat()
@@ -848,6 +936,8 @@ def salon_tool(parameters: dict, player=None, speak=None) -> str:
     a = parameters or {}
     act = (a.get("action") or "today").lower()
     try:
+        if act in ("week_report", "weekly", "semana"):
+            return week_report()
         if act in ("today", "agenda"):
             return agenda_text(parse_day(a.get("date")), a.get("staff", ""))
         if act == "book":
@@ -944,7 +1034,7 @@ TOOL_DECLARATION = {
         "For 'when' always send an exact local date and time 'YYYY-MM-DD HH:MM' (resolve 'mañana a las 5' yourself). "
         "action: today | book | free_slots | move | cancel | noshow | client | add_client | update_client | add_staff | "
         "set_service | services | add_product | stock_in | stock_use | inventory | low_stock | link_product | charge | "
-        "report | settings | open_panel."
+        "report | week_report (day-by-day summary of this week) | settings | open_panel."
     ),
     "parameters": {
         "type": "OBJECT",

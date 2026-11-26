@@ -86,6 +86,15 @@ def _token() -> str:
         return ""
 
 
+_TOKEN_RE = re.compile(r'(const TOKEN = ")([0-9a-f]{40})(")')
+
+
+def _with_token(html: str, tok: str) -> str:
+    """This PC's token into a page: the placeholder, or a token from another PC (copied files)."""
+    html = html.replace("__HUD_TOKEN__", tok)
+    return _TOKEN_RE.sub(lambda m: m.group(1) + tok + m.group(3), html)
+
+
 def _sync_wallpaper():
     """Puts this PC's token into the wallpaper (shared code ships with a placeholder) and refreshes
     Lively Wallpaper's own copy so updates show up without re-adding the wallpaper."""
@@ -95,8 +104,9 @@ def _sync_wallpaper():
         return
     try:
         html = src.read_text(encoding="utf-8")
-        if "__HUD_TOKEN__" in html:
-            html = html.replace("__HUD_TOKEN__", tok)
+        fixed = _with_token(html, tok)
+        if fixed != html:
+            html = fixed
             src.write_text(html, encoding="utf-8")
         local = os.environ.get("LOCALAPPDATA", "")
         roots = [Path(local) / "Lively Wallpaper"] + list((Path(local) / "Packages").glob("*Lively*")) if local else []
@@ -564,7 +574,7 @@ def _page(name: str) -> bytes | None:
     p = WALLPAPER_DIR / f"{name}.html"
     if not p.exists():
         return None
-    html = p.read_text(encoding="utf-8").replace("__HUD_TOKEN__", _token())
+    html = _with_token(p.read_text(encoding="utf-8"), _token())
     return html.encode("utf-8")
 
 
@@ -1046,7 +1056,7 @@ class _Handler(BaseHTTPRequestHandler):
                     elif kind == "day":
                         self._send_json(salon.day_data(q.get("date", [""])[0]))
                     else:
-                        self._send_json(salon.panel_data(kind))
+                        self._send_json(salon.panel_data(kind, q.get("date", [""])[0]))
                 elif route == "/world_events":
                     from actions import world_monitor
                     self._send_json({"ok": True, **world_monitor.get_events(force="refresh" in q)})

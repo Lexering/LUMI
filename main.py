@@ -212,7 +212,7 @@ PANIC_HOTKEY        = "ctrl+alt+p"   # atajo de pánico: silencia, arma vigilanc
 
 # Palabra de activación: solo escucha de verdad cuando oye «Lumi»
 WAKE_WORD           = True
-AWAKE_WINDOW_S      = 15       # segundos que sigue atento después de hablar contigo
+AWAKE_WINDOW_S      = 40       # segundos que sigue atenta después de hablar contigo (conversación seguida)
 WAKE_PREROLL_S      = 1.6      # audio de antes de «Lumi» que también se envía
 
 # Reconocimiento de quién habla
@@ -1307,6 +1307,8 @@ def _lumi_rules() -> str:
     """Tool routing + identity rules for Lumi (the personality itself is in core/prompt.txt)."""
     return (
         "OWNER: you work for Mirta, who runs the salon. Always call her Mirta, with a professional tone and \"usted\". Staff may also talk to you.\n\n"
+        "CONVERSATION: once Mirta has called you, keep talking naturally without her repeating your name. If what you hear "
+        "is clearly people talking to each other (clients, staff) and not to you, stay silent.\n\n"
         "LANGUAGE: answer in the language you are spoken to (Spanish by default).\n\n"
         "SALON: for appointments, agenda, free slots, clients (history, allergies, colour formulas, preferences), staff, "
         "services and prices, inventory and stock, charging, cash close and reports ALWAYS use the salon tool. For 'when' "
