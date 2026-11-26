@@ -1307,6 +1307,7 @@ def _lumi_rules() -> str:
     """Tool routing + identity rules for Lumi (the personality itself is in core/prompt.txt)."""
     return (
         "OWNER: you work for Mirta, who runs the salon. Always call her Mirta, with a professional tone and \"usted\". Staff may also talk to you.\n\n"
+        "MONEY: the salon is in the UK. All prices and cash are in British pounds (£); say «libras» (e.g. «25 libras»), never euros.\n\n"
         "CONVERSATION: once Mirta has called you, keep talking naturally without her repeating your name. If what you hear "
         "is clearly people talking to each other (clients, staff) and not to you, stay silent.\n\n"
         "LANGUAGE: answer in the language you are spoken to (Spanish by default).\n\n"

@@ -77,11 +77,17 @@ WOMEN_CUTS = [
     ("Corte + lavado + secado", 60, 35), ("Corte + peinado", 75, 42), ("Corte novia / evento", 60, 40),
 ]
 DEFAULT_HOURS = {  # weekday (0=Monday) -> [open, close]; missing = closed
-    "0": ["09:30", "20:00"], "1": ["09:30", "20:00"], "2": ["09:30", "20:00"],
-    "3": ["09:30", "20:00"], "4": ["09:30", "20:00"], "5": ["09:00", "14:00"],
+    "0": ["08:00", "18:00"], "1": ["08:00", "18:00"], "2": ["08:00", "18:00"],
+    "3": ["08:00", "18:00"], "4": ["08:00", "18:00"], "5": ["08:00", "18:00"],
 }
+CURRENCY = "£"
+DEFAULT_METHODS = ["efectivo", "tarjeta", "transferencia"]
 PAY_METHODS = {"efectivo": "efectivo", "cash": "efectivo", "tarjeta": "tarjeta", "card": "tarjeta",
                "bizum": "bizum", "transferencia": "transferencia", "transfer": "transferencia"}
+
+
+def pay_methods() -> list[str]:
+    return get_setting("pay_methods", DEFAULT_METHODS) or DEFAULT_METHODS
 
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -111,6 +117,9 @@ def db() -> sqlite3.Connection:
                 _conn.executemany("INSERT INTO services(name, category, duration_min, price) VALUES (?,?,?,?)",
                                   [(n, "Corte mujer", m, p) for n, m, p in WOMEN_CUTS if n.lower() not in have])
                 set_setting("women_cuts_v1", True, _conn)
+            if not get_setting("hours_8_18_gbp", False, _conn):     # salon in the UK: 8:00-18:00
+                set_setting("hours", DEFAULT_HOURS, _conn)
+                set_setting("hours_8_18_gbp", True, _conn)
             if get_setting("hours", None, _conn) is None:
                 set_setting("hours", DEFAULT_HOURS, _conn)
                 set_setting("slot_min", 15, _conn)
@@ -300,7 +309,7 @@ def client_card(c: dict) -> str:
     if visits:
         parts.append("Últimas visitas: " + "; ".join(f"{v['start'][:10]} {v['service'] or ''} ({v['staff'] or '-'})" for v in visits))
     if spent and spent["n"]:
-        parts.append(f"Ha gastado {spent['t']:.2f} € en {spent['n']} compra(s).")
+        parts.append(f"Ha gastado £{spent['t']:.2f} en {spent['n']} compra(s).")
     if nxt:
         parts.append(f"Próxima cita: {nxt['start'][:16].replace('T', ' ')} ({nxt['service']}).")
     if c["notes"]:
@@ -415,7 +424,7 @@ def book(client_q: str, service_q: str, when: str, staff_q: str = "", phone: str
                                                end.isoformat(), svc["price"], notes, now_iso()))
     warn = f" ⚠ Ojo: alergias de {client['name']}: {client['allergies']}." if client.get("allergies") else ""
     return (f"Cita #{aid} reservada: {client['name']}, {svc['name']}, {fday(start)} a las {start:%H:%M}"
-            + (f" con {staff['name']}" if staff else "") + f" ({svc['duration_min']} min, {svc['price']:.2f} €).{warn}")
+            + (f" con {staff['name']}" if staff else "") + f" ({svc['duration_min']} min, £{svc['price']:.2f}).{warn}")
 
 
 def _slots_text(day: date, svc: dict, staff_id=None) -> str:
@@ -524,7 +533,7 @@ def inventory_text(query: str = "") -> str:
     if not rows:
         return "No hay productos en el inventario todavía." if not query else f"No encuentro productos de «{query}»."
     value = sum(r["stock"] * r["cost"] for r in rows)
-    return f"{len(rows)} producto(s), valor a coste {value:.2f} €:\n" + "\n".join(
+    return f"{len(rows)} producto(s), valor a coste £{value:.2f}:\n" + "\n".join(
         f"- {r['brand']} {r['name']}".replace("-  ", "- ") + f": {r['stock']:g} {r['unit']}" + (" ⚠ BAJO" if r["stock"] <= r["min_stock"] else "")
         for r in rows[:40])
 
@@ -543,7 +552,7 @@ def finish_appointment(a: dict):
 
 def charge(client_q: str = "", amount=None, method: str = "efectivo", tip=0, products: str = "", staff_q: str = "",
            appt_id=None) -> str:
-    method = PAY_METHODS.get(norm(method), "efectivo")
+    method = PAY_METHODS.get(norm(method)) or next((m for m in pay_methods() if norm(m) == norm(method)), "efectivo")
     a = _find_appointment("", "", appt_id) if appt_id else None
     if a is None and client_q:
         c = find_client(client_q)
@@ -571,7 +580,7 @@ def charge(client_q: str = "", amount=None, method: str = "efectivo", tip=0, pro
     sid = run("""INSERT INTO sales(ts, client_id, staff_id, appointment_id, total, tip, method, items)
                  VALUES(?,?,?,?,?,?,?,?)""", (now_iso(), client["id"] if client else None, staff["id"] if staff else None,
                                                a["id"] if a else None, total, float(tip or 0), method, json.dumps(items, ensure_ascii=False)))
-    return f"Cobrado: {total:.2f} € en {method}" + (f" + {float(tip):.2f} € de propina" if tip else "") + \
+    return f"Cobrado: £{total:.2f} en {method}" + (f" + £{float(tip):.2f} de propina" if tip else "") + \
         (f" a {client['name']}" if client else "") + f" (ticket #{sid})."
 
 
@@ -595,11 +604,11 @@ def report(period: str = "today") -> str:
                WHERE ap.status='done' AND ap.start>=? AND ap.start<? GROUP BY s.id ORDER BY n DESC LIMIT 3""", (s, e))
     noshow = q1("SELECT COUNT(*) n FROM appointments WHERE status='noshow' AND start>=? AND start<?", (s, e))["n"]
     new = q1("SELECT COUNT(*) n FROM clients WHERE created>=? AND created<?", (s, e))["n"]
-    lines = [f"Caja {label}: {tot['t']:.2f} € en {tot['n']} ticket(s)" + (f" + {tot['tip']:.2f} € de propinas" if tot["tip"] else "") + "."]
+    lines = [f"Caja {label}: £{tot['t']:.2f} en {tot['n']} ticket(s)" + (f" + £{tot['tip']:.2f} de propinas" if tot["tip"] else "") + "."]
     if by_m:
-        lines.append("Por forma de pago: " + ", ".join(f"{m['method']} {m['t']:.2f} €" for m in by_m) + ".")
+        lines.append("Por forma de pago: " + ", ".join(f"{m['method']} £{m['t']:.2f}" for m in by_m) + ".")
     if by_s:
-        lines.append("Por persona: " + ", ".join(f"{x['name']} {x['t']:.2f} €" + (f" (comisión {x['t'] * x['pct'] / 100:.2f} €)" if x["pct"] else "") for x in by_s) + ".")
+        lines.append("Por persona: " + ", ".join(f"{x['name']} £{x['t']:.2f}" + (f" (comisión £{x['t'] * x['pct'] / 100:.2f})" if x["pct"] else "") for x in by_s) + ".")
     if top:
         lines.append("Servicios más hechos: " + ", ".join(f"{t['name']} ({t['n']})" for t in top) + ".")
     if new or noshow:
@@ -636,16 +645,15 @@ def cash_history(days: int = 90) -> list[dict]:
                 WHERE ts>=? GROUP BY d, method""", (since,))
     out: dict[str, dict] = {}
     for r in rows:
-        x = out.setdefault(r["d"], {"date": r["d"], "total": 0.0, "tips": 0.0, "tickets": 0,
-                                    "efectivo": 0.0, "tarjeta": 0.0, "bizum": 0.0, "otros": 0.0})
+        x = out.setdefault(r["d"], {"date": r["d"], "total": 0.0, "tips": 0.0, "tickets": 0, "by": {}})
         x["total"] += r["t"] or 0; x["tips"] += r["tip"] or 0; x["tickets"] += r["n"]
-        x[r["method"] if r["method"] in ("efectivo", "tarjeta", "bizum") else "otros"] += r["t"] or 0
+        x["by"][r["method"] or "otros"] = round(x["by"].get(r["method"] or "otros", 0) + (r["t"] or 0), 2)
     done = {r["d"]: r["n"] for r in q("""SELECT substr(start,1,10) d, COUNT(*) n FROM appointments
                                          WHERE status='done' AND start>=? GROUP BY d""", (since,))}
     res = []
     for d in sorted(out, reverse=True):
         x = out[d]
-        x.update({k: round(x[k], 2) for k in ("total", "tips", "efectivo", "tarjeta", "bizum", "otros")})
+        x.update({k: round(x[k], 2) for k in ("total", "tips")})
         x["services"] = done.get(d, 0)
         x["label"] = fday(date.fromisoformat(d))
         res.append(x)
@@ -667,13 +675,13 @@ def week_report(ref: date | None = None) -> str:
         d = mon + timedelta(days=i)
         r = per.get(d.isoformat())
         if r or _hours_for(d):
-            days.append(f"{DIAS[d.weekday()]} {(r['t'] if r else 0):.0f} €")
-    lines = [f"Resumen de la semana: {tot:.2f} € en {n} ticket(s)."]
+            days.append(f"{DIAS[d.weekday()]} £{(r['t'] if r else 0):.0f}")
+    lines = [f"Resumen de la semana: £{tot:.2f} en {n} ticket(s)."]
     if days:
         lines.append("Por días: " + ", ".join(days) + ".")
     if per:
         best = max(per.values(), key=lambda r: r["t"] or 0)
-        lines.append(f"El mejor día fue el {fday(date.fromisoformat(best['d']))} con {best['t']:.2f} €.")
+        lines.append(f"El mejor día fue el {fday(date.fromisoformat(best['d']))} con £{best['t']:.2f}.")
     if prev:
         diff = (tot - prev) / prev * 100
         lines.append(f"Respecto a la semana pasada: {'+' if diff >= 0 else ''}{diff:.0f} %.")
@@ -759,7 +767,10 @@ def panel_meta() -> dict:
             "staff": [{"id": s["id"], "name": s["name"]} for s in q("SELECT id, name FROM staff WHERE active=1 ORDER BY name")],
             "clients": [{"id": c["id"], "name": c["name"], "phone": c["phone"] or ""}
                         for c in q("SELECT id, name, phone FROM clients ORDER BY name LIMIT 2000")],
-            "methods": ["efectivo", "tarjeta", "bizum", "transferencia"]}
+            "methods": pay_methods(), "currency": CURRENCY,
+            "hours": get_setting("hours", DEFAULT_HOURS),
+            "staff_full": [{"id": s["id"], "name": s["name"], "role": s["role"] or "", "commission": s["commission_pct"] or 0,
+                            "phone": s["phone"] or ""} for s in q("SELECT * FROM staff WHERE active=1 ORDER BY name")]}
 
 
 def day_data(day_s: str) -> dict:
@@ -828,7 +839,7 @@ def panel_action(b: dict) -> dict:
             sid = run("INSERT INTO sales(ts, client_id, total, tip, method, items, notes) VALUES(?,?,?,?,?,?,?)",
                       (now_iso(), c["id"] if c else None, total, _f(b.get("tip")), b.get("method") or "efectivo",
                        json.dumps(items, ensure_ascii=False), "manual"))
-            return {"ok": True, "msg": f"Cobro de {total:.2f} € añadido (ticket #{sid})."}
+            return {"ok": True, "msg": f"Cobro de £{total:.2f} añadido (ticket #{sid})."}
         if a == "sale_edit":
             s = q1("SELECT * FROM sales WHERE id=?", (int(b["id"]),))
             if not s:
@@ -868,6 +879,55 @@ def panel_action(b: dict) -> dict:
             add_product(name, brand=vals[1], stock=_f(b.get("stock")), min_stock=vals[3], cost=vals[4], price=vals[5],
                         unit=vals[2], supplier=(b.get("supplier") or "").strip())
             return {"ok": True, "msg": f"{name} añadido al inventario."}
+        if a == "hours_save":
+            hours = {}
+            for k, v in (b.get("hours") or {}).items():
+                if v and len(v) == 2 and v[0] < v[1]:
+                    datetime.strptime(v[0], "%H:%M"); datetime.strptime(v[1], "%H:%M")
+                    hours[str(int(k))] = [v[0], v[1]]
+            set_setting("hours", hours)
+            return {"ok": True, "msg": "Horario guardado."}
+        if a == "service_save":
+            name = (b.get("name") or "").strip()
+            if not name:
+                return {"ok": False, "msg": "Pon el nombre del servicio."}
+            vals = (name, (b.get("category") or "").strip(), max(5, int(_f(b.get("duration"), 30))), _f(b.get("price")))
+            if b.get("id"):
+                run("UPDATE services SET name=?, category=?, duration_min=?, price=? WHERE id=?", vals + (int(b["id"]),))
+                return {"ok": True, "msg": f"{name} guardado."}
+            ex = q1("SELECT * FROM services WHERE lower(name)=lower(?)", (name,))
+            if ex:
+                run("UPDATE services SET category=?, duration_min=?, price=?, active=1 WHERE id=?", vals[1:] + (ex["id"],))
+            else:
+                run("INSERT INTO services(name, category, duration_min, price) VALUES(?,?,?,?)", vals)
+            return {"ok": True, "msg": f"{name} añadido."}
+        if a == "service_delete":
+            run("UPDATE services SET active=0 WHERE id=?", (int(b["id"]),))
+            return {"ok": True, "msg": "Servicio quitado de la lista."}
+        if a == "staff_save":
+            name = (b.get("name") or "").strip()
+            if not name:
+                return {"ok": False, "msg": "Pon el nombre."}
+            if b.get("id"):
+                run("UPDATE staff SET name=?, role=?, commission_pct=?, phone=? WHERE id=?",
+                    (name, (b.get("role") or "").strip(), _f(b.get("commission")), (b.get("phone") or "").strip(), int(b["id"])))
+                return {"ok": True, "msg": f"{name} guardado."}
+            ex = q1("SELECT * FROM staff WHERE lower(name)=lower(?)", (name,))
+            if ex:
+                run("UPDATE staff SET active=1, role=?, commission_pct=? WHERE id=?",
+                    ((b.get("role") or "").strip() or ex["role"], _f(b.get("commission"), ex["commission_pct"] or 0), ex["id"]))
+            else:
+                add_staff(name, b.get("role") or "", _f(b.get("commission")), b.get("phone") or "")
+            return {"ok": True, "msg": f"{name} añadido al equipo."}
+        if a == "staff_delete":
+            run("UPDATE staff SET active=0 WHERE id=?", (int(b["id"]),))
+            return {"ok": True, "msg": "Quitado del equipo."}
+        if a == "methods_save":
+            ms = [m.strip().lower() for m in (b.get("methods") or []) if m and m.strip()]
+            if not ms:
+                return {"ok": False, "msg": "Deja al menos una forma de pago."}
+            set_setting("pay_methods", list(dict.fromkeys(ms)))
+            return {"ok": True, "msg": "Formas de pago guardadas."}
         if a == "product_delete":
             run("UPDATE products SET active=0 WHERE id=?", (int(b["id"]),))
             return {"ok": True, "msg": "Producto quitado del inventario."}
@@ -969,9 +1029,9 @@ def salon_tool(parameters: dict, player=None, speak=None) -> str:
             return f"{s['name']} añadido/a al equipo."
         if act == "set_service":
             s = set_service(a.get("service", ""), a.get("duration_min"), a.get("price"), a.get("category", ""))
-            return f"Servicio {s['name']}: {s['duration_min']} min, {s['price']:.2f} €."
+            return f"Servicio {s['name']}: {s['duration_min']} min, £{s['price']:.2f}."
         if act == "services":
-            return "Servicios: " + "; ".join(f"{s['name']} {s['duration_min']} min {s['price']:.0f} €"
+            return "Servicios: " + "; ".join(f"{s['name']} {s['duration_min']} min £{s['price']:.0f}"
                                              for s in q("SELECT * FROM services WHERE active=1 ORDER BY category, name"))
         if act == "add_product":
             p = add_product(a.get("product", ""), a.get("brand", ""), a.get("category", ""), a.get("qty") or 0,
@@ -1029,7 +1089,7 @@ TOOL_DECLARATION = {
         "Hair salon management (Lumi's business system). Use it for EVERYTHING about the salon: appointments "
         "(book, free slots, move, cancel, no-show, today's/any day's agenda), clients (card with history, allergies, "
         "colour formula, preferences, notes, birthday, consent), staff, services and prices, inventory (add products, "
-        "stock in/use, low stock & order list, which products each service uses), charging (cash/card/bizum, tips, "
+        "stock in/use, low stock & order list, which products each service uses), charging (cash/card/transfer, tips, "
         "retail products) and reports (day/week/month cash, by staff with commissions, top services). "
         "For 'when' always send an exact local date and time 'YYYY-MM-DD HH:MM' (resolve 'mañana a las 5' yourself). "
         "action: today | book | free_slots | move | cancel | noshow | client | add_client | update_client | add_staff | "
@@ -1070,7 +1130,7 @@ TOOL_DECLARATION = {
             "supplier": {"type": "STRING", "description": "Supplier name"},
             "barcode": {"type": "STRING", "description": "Product barcode"},
             "amount": {"type": "NUMBER", "description": "Amount to charge (if different from the service price)"},
-            "method": {"type": "STRING", "description": "efectivo | tarjeta | bizum | transferencia"},
+            "method": {"type": "STRING", "description": "efectivo | tarjeta | transferencia (or another method the salon set up)"},
             "tip": {"type": "NUMBER", "description": "Tip"},
             "period": {"type": "STRING", "description": "today | yesterday | week | month"},
             "salon_name": {"type": "STRING", "description": "Salon name (settings)"},

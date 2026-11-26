@@ -344,7 +344,7 @@
   setInterval(loadWeather, 600000); setTimeout(loadWeather, 1500);
 
   // ───────── salon ─────────
-  const money = v => (v || 0).toLocaleString("es", { style: "currency", currency: "EUR", minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: v % 1 ? 2 : 0 });
+  const money = v => (v || 0).toLocaleString("en-GB", { style: "currency", currency: "GBP", minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: v % 1 ? 2 : 0 });
   async function loadSalon() {
     let d; try { d = await api("/salon_today"); } catch { return; }
     if (!d || !d.ok) return;

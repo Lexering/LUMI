@@ -113,6 +113,7 @@
     <button data-tab="agenda" type="button">Agenda</button>
     <button data-tab="cash" type="button">Caja</button>
     <button data-tab="stock" type="button">Stock</button>
+    <button data-tab="settings" type="button">Ajustes</button>
   </nav>
   <button class="close" id="close" type="button" aria-label="Cerrar">✕</button>
 </header>
@@ -184,7 +185,7 @@
           <form id="sale" autocomplete="off">
             <label for="s-concept">Concepto</label><input id="s-concept" placeholder="Champú, bono, servicio…" required>
             <div class="row2">
-              <div><label for="s-amount">Importe (€)</label><input id="s-amount" inputmode="decimal" required></div>
+              <div><label for="s-amount">Importe (£)</label><input id="s-amount" inputmode="decimal" required></div>
               <div><label for="s-method">Forma de pago</label><select id="s-method"></select></div>
             </div>
             <label for="s-client">Cliente (opcional)</label><input id="s-client" list="clients">
@@ -221,8 +222,8 @@
             <div><label for="p-min">Mínimo</label><input id="p-min" inputmode="decimal" value="1"></div>
           </div>
           <div class="row2">
-            <div><label for="p-cost">Coste (€)</label><input id="p-cost" inputmode="decimal"></div>
-            <div><label for="p-price">Precio venta (€)</label><input id="p-price" inputmode="decimal"></div>
+            <div><label for="p-cost">Coste (£)</label><input id="p-cost" inputmode="decimal"></div>
+            <div><label for="p-price">Precio venta (£)</label><input id="p-price" inputmode="decimal"></div>
           </div>
           <label for="p-supplier">Proveedor (opcional)</label><input id="p-supplier">
           <div class="btns">
@@ -230,6 +231,51 @@
             <button class="b" type="button" id="p-new" hidden>Nuevo producto</button>
           </div>
         </form>
+      </div>
+    </div>
+  </section>
+  <!-- ───────── AJUSTES ───────── -->
+  <section class="tab" id="tab-settings">
+    <div class="grid" style="grid-template-columns: 1.5fr 1fr">
+      <div>
+        <div class="box">
+          <h3>Servicios <span class="sp"></span><span style="letter-spacing:0;text-transform:none" id="sv-count"></span></h3>
+          <div class="search" style="margin-bottom:10px"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input id="sv-q" placeholder="Buscar servicio"></div>
+          <div id="sv-table" style="max-height:52vh;overflow:auto"></div>
+          <h3 style="margin-top:16px">Añadir servicio</h3>
+          <form id="sv-add" class="row3" style="grid-template-columns:2fr 1.3fr .8fr .8fr auto;align-items:end" autocomplete="off">
+            <div><label>Nombre</label><input id="sv-name" placeholder="Corte + barba" required></div>
+            <div><label>Categoría</label><input id="sv-cat" list="sv-cats" placeholder="Corte mujer"><datalist id="sv-cats"></datalist></div>
+            <div><label>Minutos</label><input id="sv-min" inputmode="numeric" value="30"></div>
+            <div><label>Precio (£)</label><input id="sv-price" inputmode="decimal"></div>
+            <button class="b pri" type="submit">Añadir</button>
+          </form>
+        </div>
+      </div>
+      <div>
+        <div class="box">
+          <h3>Horario</h3>
+          <div id="hours"></div>
+          <div class="btns"><button class="b pri" id="hours-save" type="button">Guardar horario</button></div>
+        </div>
+        <div class="box" style="margin-top:16px">
+          <h3>Equipo</h3>
+          <div id="team"></div>
+          <form id="team-add" class="row3" style="grid-template-columns:1.4fr 1.2fr .8fr auto;align-items:end;margin-top:10px" autocomplete="off">
+            <div><label>Nombre</label><input id="tm-name" required></div>
+            <div><label>Puesto</label><input id="tm-role" placeholder="Estilista"></div>
+            <div><label>Comisión %</label><input id="tm-com" inputmode="decimal" placeholder="0"></div>
+            <button class="b pri" type="submit">Añadir</button>
+          </form>
+        </div>
+        <div class="box" style="margin-top:16px">
+          <h3>Formas de pago</h3>
+          <div class="chips" id="methods"></div>
+          <form id="m-add" style="display:flex;gap:8px;margin-top:10px" autocomplete="off">
+            <input id="m-name" placeholder="Nueva (p. ej. vale regalo)"><button class="b" type="submit">Añadir</button>
+          </form>
+        </div>
       </div>
     </div>
   </section>
@@ -242,7 +288,7 @@
   const AUTH = { "X-Lumi-Token": "__HUD_TOKEN__" };
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const money = v => (+v || 0).toLocaleString("es", { style: "currency", currency: "EUR", minimumFractionDigits: (+v % 1) ? 2 : 0, maximumFractionDigits: 2 });
+  const money = v => (+v || 0).toLocaleString("en-GB", { style: "currency", currency: "GBP", minimumFractionDigits: (+v % 1) ? 2 : 0, maximumFractionDigits: 2 });
   const params = new URLSearchParams(location.search);
   const embedded = params.get("embed") === "1";
 
@@ -268,7 +314,7 @@
   function show(t) {
     tab = t; document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
     document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("on", s.id === "tab-" + t));
-    ({ agenda: loadDay, cash: loadCash, stock: loadStock })[t]();
+    ({ agenda: loadDay, cash: loadCash, stock: loadStock, settings: loadSettings })[t]();
   }
   document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
   $("close").onclick = () => { if (embedded) parent.postMessage("lumi-close", "*"); else window.close(); };
@@ -364,9 +410,9 @@
   function chargeForm(row, a, after) {
     if (row.querySelector(".inline")) return;
     const f = document.createElement("div"); f.className = "inline";
-    f.innerHTML = `<div><label>Importe (€)</label><input class="i-amt" inputmode="decimal" value="${a.price ?? ""}"></div>
+    f.innerHTML = `<div><label>Importe (£)</label><input class="i-amt" inputmode="decimal" value="${a.price ?? ""}"></div>
       <div><label>Forma de pago</label><select class="i-met">${meta.methods.map(m => `<option>${m}</option>`).join("")}</select></div>
-      <div><label>Propina (€)</label><input class="i-tip" inputmode="decimal" placeholder="0"></div>
+      <div><label>Propina (£)</label><input class="i-tip" inputmode="decimal" placeholder="0"></div>
       <button class="b pri sm" type="button">Cobrar</button><button class="b sm" type="button">Cancelar</button>`;
     row.appendChild(f);
     const [ok, no] = f.querySelectorAll("button");
@@ -404,10 +450,12 @@
     $("c-today").hidden = isToday;
     const H = d.history || [];
     const sum = k => money(H.reduce((a, x) => a + (x[k] || 0), 0));
-    $("c-history").innerHTML = H.length ? `<table><tr><th>Día</th><th class="r">Tickets</th><th class="r">Servicios</th><th class="r">Efectivo</th><th class="r">Tarjeta</th><th class="r">Bizum</th><th class="r">Otros</th><th class="r">Propinas</th><th class="r">Total</th></tr>
+    const M = [...new Set([...meta.methods, ...H.flatMap(x => Object.keys(x.by || {}))])];
+    const sumBy = m => money(H.reduce((a, x) => a + ((x.by || {})[m] || 0), 0));
+    $("c-history").innerHTML = H.length ? `<table><tr><th>Día</th><th class="r">Tickets</th><th class="r">Servicios</th>${M.map(m => `<th class="r">${esc(m)}</th>`).join("")}<th class="r">Propinas</th><th class="r">Total</th></tr>
       ${H.map(x => `<tr class="pick ${x.date === d.date ? "cur" : ""}" data-d="${x.date}"><td style="text-transform:capitalize">${esc(x.label)}</td><td class="r">${x.tickets}</td><td class="r">${x.services}</td>
-        <td class="r">${money(x.efectivo)}</td><td class="r">${money(x.tarjeta)}</td><td class="r">${money(x.bizum)}</td><td class="r">${money(x.otros)}</td><td class="r">${money(x.tips)}</td><td class="r"><b>${money(x.total)}</b></td></tr>`).join("")}
-      <tr><td><b>Total ${H.length} día(s)</b></td><td class="r">${H.reduce((a, x) => a + x.tickets, 0)}</td><td class="r">${H.reduce((a, x) => a + x.services, 0)}</td><td class="r">${sum("efectivo")}</td><td class="r">${sum("tarjeta")}</td><td class="r">${sum("bizum")}</td><td class="r">${sum("otros")}</td><td class="r">${sum("tips")}</td><td class="r"><b>${sum("total")}</b></td></tr></table>`
+        ${M.map(m => `<td class="r">${money((x.by || {})[m] || 0)}</td>`).join("")}<td class="r">${money(x.tips)}</td><td class="r"><b>${money(x.total)}</b></td></tr>`).join("")}
+      <tr><td><b>Total ${H.length} día(s)</b></td><td class="r">${H.reduce((a, x) => a + x.tickets, 0)}</td><td class="r">${H.reduce((a, x) => a + x.services, 0)}</td>${M.map(m => `<td class="r">${sumBy(m)}</td>`).join("")}<td class="r">${sum("tips")}</td><td class="r"><b>${sum("total")}</b></td></tr></table>`
       : `<div class="empty">Todavía no hay días con cobros.</div>`;
     $("c-history").querySelectorAll("tr.pick").forEach(tr => tr.onclick = () => { cashDay = tr.dataset.d === new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10) ? "" : tr.dataset.d; loadCash(); });
     const box = $("c-sales");
@@ -477,7 +525,77 @@
     if (r.ok) { editProduct(null); loadStock(); }
   };
 
-  loadMeta().then(() => show(["agenda", "cash", "stock"].includes(params.get("tab")) ? params.get("tab") : "agenda"));
+
+  // ───────── ajustes: servicios, horario, equipo, formas de pago ─────────
+  const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+  async function loadSettings() { await loadMeta(); renderServices(); renderHours(); renderTeam(); renderMethods(); }
+  function renderServices() {
+    const words = norm($("sv-q").value).split(/\s+/).filter(Boolean);
+    const list = meta.services.filter(s => words.every(w => norm(s.name + " " + s.cat).includes(w)));
+    $("sv-count").textContent = `${meta.services.length} en total`;
+    $("sv-cats").innerHTML = [...new Set(meta.services.map(s => s.cat).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("");
+    $("sv-table").innerHTML = list.length ? `<table><tr><th>Servicio</th><th>Categoría</th><th class="r">Min</th><th class="r">Precio</th><th></th></tr>
+      ${list.map(s => `<tr data-id="${s.id}"><td><input class="e-name" value="${esc(s.name)}"></td><td><input class="e-cat" list="sv-cats" value="${esc(s.cat)}"></td>
+        <td class="r"><input class="e-min" inputmode="numeric" value="${s.min}" style="width:64px;text-align:right"></td>
+        <td class="r"><input class="e-price" inputmode="decimal" value="${s.price}" style="width:78px;text-align:right"></td>
+        <td class="r" style="white-space:nowrap"><button class="b sm" data-do="save" type="button">Guardar</button> <button class="b sm danger" data-do="del" type="button">Quitar</button></td></tr>`).join("")}</table>`
+      : `<div class="empty">No hay servicios con esa búsqueda.</div>`;
+    $("sv-table").querySelectorAll("tr[data-id]").forEach(tr => {
+      const v = c => tr.querySelector(c).value;
+      tr.querySelector('[data-do="save"]').onclick = async () => { const r = await act({ action: "service_save", id: tr.dataset.id, name: v(".e-name"), category: v(".e-cat"), duration: v(".e-min"), price: v(".e-price") }); if (r.ok) loadSettings(); };
+      tr.querySelector('[data-do="del"]').onclick = async e => { if (!armed(e.target)) return; const r = await act({ action: "service_delete", id: tr.dataset.id }); if (r.ok) loadSettings(); };
+    });
+  }
+  $("sv-q").oninput = renderServices;
+  $("sv-add").onsubmit = async e => {
+    e.preventDefault();
+    const r = await act({ action: "service_save", name: $("sv-name").value, category: $("sv-cat").value, duration: $("sv-min").value, price: $("sv-price").value });
+    if (r.ok) { ["sv-name", "sv-price"].forEach(i => $(i).value = ""); loadSettings(); }
+  };
+  function renderHours() {
+    const h = meta.hours || {};
+    $("hours").innerHTML = DAYS.map((d, i) => { const v = h[String(i)];
+      return `<div class="hrow" data-d="${i}" style="display:grid;grid-template-columns:110px 74px 1fr 1fr;gap:8px;align-items:center;padding:4px 0">
+        <span style="color:var(--cream)">${d}</span>
+        <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--text)"><input type="checkbox" class="h-on" ${v ? "checked" : ""} style="width:auto">Abre</label>
+        <input type="time" class="h-o" value="${v ? v[0] : "08:00"}" ${v ? "" : "disabled"}><input type="time" class="h-c" value="${v ? v[1] : "18:00"}" ${v ? "" : "disabled"}></div>`; }).join("");
+    $("hours").querySelectorAll(".hrow").forEach(r => r.querySelector(".h-on").onchange = e => r.querySelectorAll("input[type=time]").forEach(i => i.disabled = !e.target.checked));
+  }
+  $("hours-save").onclick = async () => {
+    const hours = {};
+    $("hours").querySelectorAll(".hrow").forEach(r => { if (r.querySelector(".h-on").checked) hours[r.dataset.d] = [r.querySelector(".h-o").value, r.querySelector(".h-c").value]; });
+    const r = await act({ action: "hours_save", hours }); if (r.ok) loadSettings();
+  };
+  function renderTeam() {
+    const st = meta.staff_full || [];
+    $("team").innerHTML = st.length ? `<table><tr><th>Nombre</th><th>Puesto</th><th class="r">Com. %</th><th></th></tr>${st.map(s => `<tr data-id="${s.id}">
+      <td><input class="t-name" value="${esc(s.name)}"></td><td><input class="t-role" value="${esc(s.role)}"></td>
+      <td class="r"><input class="t-com" inputmode="decimal" value="${s.commission}" style="width:60px;text-align:right"></td>
+      <td class="r" style="white-space:nowrap"><button class="b sm" data-do="save" type="button">Guardar</button> <button class="b sm danger" data-do="del" type="button">Quitar</button></td></tr>`).join("")}</table>`
+      : `<div class="empty">Todavía no hay nadie en el equipo.</div>`;
+    $("team").querySelectorAll("tr[data-id]").forEach(tr => {
+      const v = c => tr.querySelector(c).value;
+      tr.querySelector('[data-do="save"]').onclick = async () => { const r = await act({ action: "staff_save", id: tr.dataset.id, name: v(".t-name"), role: v(".t-role"), commission: v(".t-com") }); if (r.ok) loadSettings(); };
+      tr.querySelector('[data-do="del"]').onclick = async e => { if (!armed(e.target)) return; const r = await act({ action: "staff_delete", id: tr.dataset.id }); if (r.ok) loadSettings(); };
+    });
+  }
+  $("team-add").onsubmit = async e => {
+    e.preventDefault();
+    const r = await act({ action: "staff_save", name: $("tm-name").value, role: $("tm-role").value, commission: $("tm-com").value });
+    if (r.ok) { ["tm-name", "tm-role", "tm-com"].forEach(i => $(i).value = ""); loadSettings(); }
+  };
+  function renderMethods() {
+    $("methods").innerHTML = meta.methods.map(m => `<span class="chip" style="cursor:default">${esc(m)} <button type="button" data-m="${esc(m)}" aria-label="Quitar ${esc(m)}"
+      style="background:none;border:0;color:var(--dim);cursor:pointer;font-size:14px;margin-left:4px">✕</button></span>`).join("");
+    $("methods").querySelectorAll("[data-m]").forEach(b => b.onclick = async () => {
+      const r = await act({ action: "methods_save", methods: meta.methods.filter(m => m !== b.dataset.m) }); if (r.ok) loadSettings(); });
+  }
+  $("m-add").onsubmit = async e => {
+    e.preventDefault(); const v = $("m-name").value.trim(); if (!v) return;
+    const r = await act({ action: "methods_save", methods: [...meta.methods, v] }); if (r.ok) { $("m-name").value = ""; loadSettings(); }
+  };
+
+  loadMeta().then(() => show(["agenda", "cash", "stock", "settings"].includes(params.get("tab")) ? params.get("tab") : "agenda"));
   setInterval(() => { if (tab === "cash" && !document.querySelector("#c-sales input, .inline")) loadCash(); }, 60000);
 })();
 </script>
