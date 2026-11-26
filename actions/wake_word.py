@@ -11,13 +11,18 @@ Necesita:  pip install vosk     (el modelo en español, ~40 MB, se descarga solo
 from __future__ import annotations
 
 import json
+import re
 import queue
 import threading
 import time
 
 import numpy as np
 
-WAKE_WORDS = ["lumi", "oye lumi", "hola lumi", "ey lumi", "hey lumi", "lumy", "lomi"]
+WAKE_WORDS = ["lumi", "oye lumi", "hola lumi", "ey lumi", "hey lumi", "lumy", "lomi",
+              # «Lumi» is not a Spanish word: the small model may not know it, so also listen for what it
+              # sounds like to the model (only the ones it knows are used)
+              "lu mi", "lo mi", "luz mi", "lumbre", "lumen", "luni", "humi", "loomi", "lumie", "oye lu mi", "hola lu mi"]
+_WAKE_RE = re.compile(r"\b(lumi|lumy|lomi|lu mi|lo mi|luz mi|lumbre|lumen|luni|humi|loomi|lumie)\b")
 SAMPLE_RATE = 16000
 
 
@@ -30,8 +35,15 @@ class VoskSpotter:
         if model is None:
             model = vosk.Model(lang="es")         # descarga el modelo pequeño la primera vez
         self.model = model
-        grammar = json.dumps(sorted(set(words)) + ["[unk]"], ensure_ascii=False)
-        self.rec = vosk.KaldiRecognizer(model, SAMPLE_RATE, grammar)
+        known = sorted(set(words))
+        if hasattr(model, "find_word"):        # drop words the model doesn't know (they'd break the grammar)
+            known = [w for w in known if all(model.find_word(x) >= 0 for x in w.split())]
+        self.words = known
+        if known:
+            grammar = json.dumps(known + ["[unk]"], ensure_ascii=False)
+            self.rec = vosk.KaldiRecognizer(model, SAMPLE_RATE, grammar)
+        else:                                   # none known: free recognition + matching what it hears
+            self.rec = vosk.KaldiRecognizer(model, SAMPLE_RATE)
 
     def accept(self, pcm: bytes) -> str:
         """Devuelve el texto reconocido hasta ahora (parcial o final)."""
@@ -64,6 +76,7 @@ class WakeWord:
             self.spotter = VoskSpotter()
             self.ready = True
             self.log("ACTIVACIÓN: di «Lumi» para hablarme")
+            print(f"[Lumi] Palabras de activación que entiende este equipo: {', '.join(getattr(self.spotter, 'words', [])) or 'reconocimiento libre'}")
         except Exception as e:
             self.failed = True
             self.log(f"ACTIVACIÓN: no pude cargar Vosk ({e}). Sigo escuchando siempre. "
@@ -94,7 +107,7 @@ class WakeWord:
                 text = self.spotter.accept(pcm)
             except Exception:
                 continue
-            if any(w in text.split() for w in ("lumi", "lumy", "lomi")) and time.monotonic() > self._cooldown_until:
+            if text and _WAKE_RE.search(text.lower()) and time.monotonic() > self._cooldown_until:
                 self._cooldown_until = time.monotonic() + 2.0
                 self.spotter.reset()
                 while not self._q.empty():          # descartar audio ya procesado

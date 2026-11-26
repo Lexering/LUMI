@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumi · Salón</title>
+<!-- Lumi - agenda, caja and stock screen. Opened from the desktop (Huecos / Caja / Stock) or as its own window. -->
+<style>
+  :root {
+    --bg: #0d100a; --panel: #151b10; --card: rgba(34, 43, 27, .72); --card-hi: rgba(46, 57, 36, .85);
+    --line: rgba(201, 192, 143, .16); --line-hi: rgba(201, 192, 143, .42);
+    --rose: #c9c08f; --gold: #c8a75a; --cream: #eef0e2; --text: #c5c9b4; --dim: #868d77;
+    --ok: #9fbf86; --red: #ff8a8a; --amber: #f2c27b;
+    --serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+    --sans: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--panel); color: var(--text); font: 14.5px/1.4 var(--sans); }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 18px; padding: 16px 22px 0; }
+  header h1 { margin: 0; font: 500 28px var(--serif); color: var(--cream); }
+  nav { display: flex; gap: 4px; margin-left: 10px; }
+  nav button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--dim); font: 500 15px var(--sans);
+               padding: 10px 14px; cursor: pointer; }
+  nav button.on { color: var(--cream); border-bottom-color: var(--rose); }
+  nav button:hover { color: var(--cream); }
+  .close { margin-left: auto; background: none; border: 1px solid var(--line); color: var(--cream); width: 36px; height: 36px;
+           border-radius: 50%; font-size: 17px; cursor: pointer; }
+  .close:hover { border-color: var(--rose); }
+  hr.top { border: 0; border-top: 1px solid var(--line); margin: 0; }
+  main { flex: 1; min-height: 0; overflow: auto; padding: 18px 22px 22px; }
+  section.tab { display: none; } section.tab.on { display: block; }
+  .grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
+  h3 { margin: 0 0 12px; font: 500 11px var(--sans); letter-spacing: .22em; text-transform: uppercase; color: var(--dim); display: flex; align-items: center; gap: 8px; }
+  h3 .sp { flex: 1; }
+  .daybar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .daybar .lbl { font: 500 22px var(--serif); color: var(--cream); flex: 1; text-transform: capitalize; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,.15); color: var(--cream);
+          font: 15px var(--sans); font-variant-numeric: tabular-nums; cursor: pointer; text-align: left; }
+  .chip small { display: block; color: var(--dim); font-size: 11px; margin-top: 1px; }
+  .chip:hover { border-color: var(--rose); }
+  .chip.sel { background: var(--rose); color: #1b2012; border-color: var(--rose); }
+  .chip.sel small { color: #3b4126; }
+  label { display: block; font-size: 12px; color: var(--dim); margin: 10px 0 4px; letter-spacing: .04em; }
+  input, select, textarea { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,.25);
+                            color: var(--cream); font: 15px var(--sans); outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--rose); }
+  select option { background: #1d2416; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  button.b { padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line-hi); background: var(--card-hi); color: var(--cream);
+             font: 500 14px var(--sans); cursor: pointer; }
+  button.b:hover { border-color: var(--rose); }
+  button.b.pri { background: var(--rose); color: #1b2012; border-color: var(--rose); }
+  button.b.pri:hover { background: #d8d0a2; }
+  button.b.sm { padding: 5px 11px; font-size: 13px; }
+  button.b.danger { border-color: rgba(255,138,138,.5); color: #ffc4c4; }
+  button.b.danger.arm { background: var(--red); color: #2a0d0d; }
+  .appt { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .appt:last-child { border-bottom: 0; }
+  .appt .t { font: 500 20px var(--serif); color: var(--cream); }
+  .appt .c { color: var(--cream); }
+  .appt .s { color: var(--dim); font-size: 13px; }
+  .appt.done { opacity: .5; }
+  .appt .al { color: var(--red); }
+  .appt .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .inline { grid-column: 1 / -1; display: flex; gap: 8px; align-items: end; flex-wrap: wrap; padding: 8px 0 2px; }
+  .inline > div { flex: 1; min-width: 110px; }
+  .inline label { margin-top: 0; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+  .stat { padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); }
+  .stat .n { font: 500 30px var(--serif); color: var(--cream); line-height: 1.1; }
+  .stat .l { font-size: 11px; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; color: var(--cream); vertical-align: middle; }
+  th { color: var(--dim); font-weight: 500; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+  td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+  td input, td select { padding: 6px 8px; font-size: 14px; }
+  tr.low td { color: #ffd0d0; }
+  .qty { display: inline-flex; align-items: center; gap: 6px; }
+  .qty button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line-hi); background: var(--card-hi); color: var(--cream); cursor: pointer; font-size: 16px; line-height: 1; }
+  .qty button:hover { border-color: var(--rose); }
+  .qty b { min-width: 42px; text-align: center; font-weight: 500; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255,138,138,.45); color: #ffb3b3; margin-left: 6px; }
+  .empty { color: var(--dim); padding: 6px 0; }
+  .hint { color: var(--dim); font-size: 13px; margin-top: 10px; }
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 10px 18px; border-radius: 999px; background: var(--card-hi);
+           border: 1px solid var(--line-hi); color: var(--cream); opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90%; text-align: center; }
+  .toast.show { opacity: 1; } .toast.err { border-color: var(--red); color: #ffd0d0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Salón</h1>
+  <nav>
+    <button data-tab="agenda" type="button">Agenda</button>
+    <button data-tab="cash" type="button">Caja</button>
+    <button data-tab="stock" type="button">Stock</button>
+  </nav>
+  <button class="close" id="close" type="button" aria-label="Cerrar">✕</button>
+</header>
+<hr class="top">
+<main>
+  <!-- ───────── AGENDA ───────── -->
+  <section class="tab" id="tab-agenda">
+    <div class="daybar">
+      <button class="b sm" id="d-prev" type="button">‹</button>
+      <button class="b sm" id="d-today" type="button">Hoy</button>
+      <button class="b sm" id="d-next" type="button">›</button>
+      <div class="lbl" id="d-label"></div>
+      <input type="date" id="d-pick" style="width:auto">
+    </div>
+    <div class="grid">
+      <div>
+        <div class="box">
+          <h3>Huecos libres <span class="sp"></span><span id="d-hours" style="letter-spacing:0;text-transform:none"></span></h3>
+          <div class="chips" id="slots"></div>
+          <div class="hint">Toque un hueco para reservarlo.</div>
+        </div>
+        <div class="box" style="margin-top:16px">
+          <h3>Citas del día</h3>
+          <div id="appts"></div>
+        </div>
+      </div>
+      <div class="box" id="book-box">
+        <h3>Nueva cita</h3>
+        <form id="book" autocomplete="off">
+          <div class="row2">
+            <div><label for="f-time">Hora</label><select id="f-time" required></select></div>
+            <div><label for="f-staff">Profesional</label><select id="f-staff"><option value="">Cualquiera libre</option></select></div>
+          </div>
+          <label for="f-client">Nombre de la clienta / cliente</label>
+          <input id="f-client" list="clients" placeholder="Escriba o elija" required>
+          <datalist id="clients"></datalist>
+          <label for="f-phone">Teléfono (opcional)</label>
+          <input id="f-phone" inputmode="tel">
+          <label for="f-service">Servicio</label>
+          <select id="f-service" required></select>
+          <label for="f-notes">Notas (opcional)</label>
+          <input id="f-notes">
+          <div class="btns">
+            <button class="b pri" type="submit">Reservar</button>
+            <button class="b" type="button" id="f-voice">Que me lo pregunte Lumi</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── CAJA ───────── -->
+  <section class="tab" id="tab-cash">
+    <div class="stats" id="c-stats"></div>
+    <div class="grid">
+      <div>
+        <div class="box">
+          <h3>Tickets de hoy</h3>
+          <div id="c-sales"></div>
+        </div>
+      </div>
+      <div>
+        <div class="box">
+          <h3>Nuevo cobro</h3>
+          <form id="sale" autocomplete="off">
+            <label for="s-concept">Concepto</label><input id="s-concept" placeholder="Champú, bono, servicio…" required>
+            <div class="row2">
+              <div><label for="s-amount">Importe (€)</label><input id="s-amount" inputmode="decimal" required></div>
+              <div><label for="s-method">Forma de pago</label><select id="s-method"></select></div>
+            </div>
+            <label for="s-client">Cliente (opcional)</label><input id="s-client" list="clients">
+            <div class="btns"><button class="b pri" type="submit">Añadir cobro</button></div>
+          </form>
+        </div>
+        <div class="box" style="margin-top:16px">
+          <h3>Citas sin cobrar</h3>
+          <div id="c-pending"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── STOCK ───────── -->
+  <section class="tab" id="tab-stock">
+    <div class="stats" id="p-stats"></div>
+    <div class="grid" style="grid-template-columns: 1.6fr 1fr">
+      <div class="box">
+        <h3>Inventario</h3>
+        <div id="p-table"></div>
+      </div>
+      <div class="box">
+        <h3 id="p-form-title">Añadir producto</h3>
+        <form id="prod" autocomplete="off">
+          <input type="hidden" id="p-id">
+          <label for="p-name">Producto</label><input id="p-name" placeholder="Majirel 7.1" required>
+          <div class="row2">
+            <div><label for="p-brand">Marca</label><input id="p-brand" placeholder="L'Oréal"></div>
+            <div><label for="p-unit">Unidad</label><input id="p-unit" value="ud"></div>
+          </div>
+          <div class="row2">
+            <div><label for="p-stock">Cantidad</label><input id="p-stock" inputmode="decimal" value="0"></div>
+            <div><label for="p-min">Mínimo</label><input id="p-min" inputmode="decimal" value="1"></div>
+          </div>
+          <div class="row2">
+            <div><label for="p-cost">Coste (€)</label><input id="p-cost" inputmode="decimal"></div>
+            <div><label for="p-price">Precio venta (€)</label><input id="p-price" inputmode="decimal"></div>
+          </div>
+          <label for="p-supplier">Proveedor (opcional)</label><input id="p-supplier">
+          <div class="btns">
+            <button class="b pri" type="submit" id="p-save">Añadir</button>
+            <button class="b" type="button" id="p-new" hidden>Nuevo producto</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const BASE = "http://127.0.0.1:5055";
+  const AUTH = { "X-Lumi-Token": "__HUD_TOKEN__" };
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const money = v => (+v || 0).toLocaleString("es", { style: "currency", currency: "EUR", minimumFractionDigits: (+v % 1) ? 2 : 0, maximumFractionDigits: 2 });
+  const params = new URLSearchParams(location.search);
+  const embedded = params.get("embed") === "1";
+
+  function toast(m, err) { const t = $("toast"); t.textContent = m; t.classList.toggle("err", !!err); t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200); }
+  async function get(path) { const r = await fetch(BASE + path, { headers: AUTH, cache: "no-store" }); return r.json(); }
+  async function act(body) {
+    try {
+      const r = await (await fetch(BASE + "/salon_action", { method: "POST", headers: { ...AUTH, "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+      toast(r.msg || (r.ok ? "Hecho" : "No se pudo"), !r.ok); return r;
+    } catch { toast("Lumi no responde", true); return { ok: false }; }
+  }
+  // two-click confirmation (native confirm() doesn't work on the desktop)
+  function armed(btn) {
+    if (btn.classList.contains("arm")) return true;
+    btn.classList.add("arm"); const old = btn.textContent; btn.textContent = "¿Seguro?";
+    setTimeout(() => { btn.classList.remove("arm"); btn.textContent = old; }, 3000); return false;
+  }
+
+  // ───────── tabs ─────────
+  let tab = "";
+  function show(t) {
+    tab = t; document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+    document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("on", s.id === "tab-" + t));
+    ({ agenda: loadDay, cash: loadCash, stock: loadStock })[t]();
+  }
+  document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
+  $("close").onclick = () => { if (embedded) parent.postMessage("lumi-close", "*"); else window.close(); };
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && embedded) parent.postMessage("lumi-close", "*"); });
+
+  // ───────── meta ─────────
+  let meta = { services: [], staff: [], clients: [], methods: ["efectivo", "tarjeta", "bizum", "transferencia"] };
+  async function loadMeta() {
+    try { const m = await get("/salon_panel?kind=meta"); if (m.ok) meta = m; } catch {}
+    $("f-service").innerHTML = `<option value="">Elija un servicio</option>` + meta.services.map(s => `<option value="${esc(s.name)}">${esc(s.name)} · ${s.min} min · ${money(s.price)}</option>`).join("");
+    $("f-staff").innerHTML = `<option value="">Cualquiera libre</option>` + meta.staff.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join("");
+    $("clients").innerHTML = meta.clients.map(c => `<option value="${esc(c.name)}">${esc(c.phone)}</option>`).join("");
+    $("s-method").innerHTML = meta.methods.map(m => `<option>${m}</option>`).join("");
+  }
+  $("f-client").addEventListener("change", () => {
+    const c = meta.clients.find(c => c.name.toLowerCase() === $("f-client").value.trim().toLowerCase());
+    if (c && c.phone && !$("f-phone").value) $("f-phone").value = c.phone;
+  });
+
+  // ───────── agenda ─────────
+  const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  let day = params.get("date") || iso(new Date()), wantTime = params.get("time") || "", dayData = null;
+  function shift(n) { const d = new Date(day + "T12:00"); d.setDate(d.getDate() + n); day = iso(d); wantTime = ""; loadDay(); }
+  $("d-prev").onclick = () => shift(-1); $("d-next").onclick = () => shift(1);
+  $("d-today").onclick = () => { day = iso(new Date()); wantTime = ""; loadDay(); };
+  $("d-pick").onchange = e => { if (e.target.value) { day = e.target.value; wantTime = ""; loadDay(); } };
+
+  function pickTime(t) {
+    wantTime = t; $("f-time").value = t;
+    document.querySelectorAll("#slots .chip").forEach(c => c.classList.toggle("sel", c.dataset.t === t));
+    $("f-client").focus();
+  }
+  async function loadDay() {
+    let d; try { d = await get(`/salon_panel?kind=day&date=${day}`); } catch { toast("Lumi no responde", true); return; }
+    dayData = d; $("d-label").textContent = d.label === undefined ? day : d.label; $("d-pick").value = d.date;
+    $("d-hours").textContent = d.closed ? "Cerrado" : `${d.open}–${d.close}`;
+    $("slots").innerHTML = d.closed ? `<div class="empty">Este día el salón está cerrado.</div>` : d.slots.length
+      ? d.slots.map(s => `<button type="button" class="chip" data-t="${s.t}">${s.t}<small>${esc(s.staff.filter(Boolean).join(", ") || "libre")}</small></button>`).join("")
+      : `<div class="empty">No quedan huecos libres.</div>`;
+    document.querySelectorAll("#slots .chip").forEach(c => c.onclick = () => pickTime(c.dataset.t));
+    $("f-time").innerHTML = d.slots.length ? d.slots.map(s => `<option>${s.t}</option>`).join("") : `<option value="">Sin huecos</option>`;
+    if (wantTime && d.slots.some(s => s.t === wantTime)) pickTime(wantTime);
+    renderAppts(d.appointments);
+  }
+  function renderAppts(list) {
+    const box = $("appts");
+    if (!list.length) { box.innerHTML = `<div class="empty">No hay citas este día.</div>`; return; }
+    box.innerHTML = list.map(a => `<div class="appt ${a.status === "done" ? "done" : ""}" data-id="${a.id}">
+        <div class="t">${a.t}</div>
+        <div><div class="c">${esc(a.client || "—")}</div><div class="s">${esc(a.service)}${a.staff ? " · " + esc(a.staff) : ""} · ${money(a.price)}
+          ${a.allergies ? `<span class="al"> · ⚠ ${esc(a.allergies)}</span>` : ""}${a.status === "done" ? " · cobrada" : a.status === "noshow" ? " · no vino" : ""}</div></div>
+        <div class="acts">${a.status === "done" || a.status === "noshow" ? "" : `<button class="b sm" data-do="charge">Cobrar</button>
+          <button class="b sm danger" data-do="cancel">Anular</button>`}</div>
+      </div>`).join("");
+    box.querySelectorAll(".appt").forEach(row => {
+      const a = list.find(x => x.id == row.dataset.id);
+      row.querySelectorAll("[data-do]").forEach(btn => btn.onclick = async () => {
+        if (btn.dataset.do === "cancel") { if (!armed(btn)) return; const r = await act({ action: "cancel", id: a.id }); if (r.ok) loadDay(); }
+        else chargeForm(row, a, loadDay);
+      });
+    });
+  }
+  function chargeForm(row, a, after) {
+    if (row.querySelector(".inline")) return;
+    const f = document.createElement("div"); f.className = "inline";
+    f.innerHTML = `<div><label>Importe (€)</label><input class="i-amt" inputmode="decimal" value="${a.price ?? ""}"></div>
+      <div><label>Forma de pago</label><select class="i-met">${meta.methods.map(m => `<option>${m}</option>`).join("")}</select></div>
+      <div><label>Propina (€)</label><input class="i-tip" inputmode="decimal" placeholder="0"></div>
+      <button class="b pri sm" type="button">Cobrar</button><button class="b sm" type="button">Cancelar</button>`;
+    row.appendChild(f);
+    const [ok, no] = f.querySelectorAll("button");
+    no.onclick = () => f.remove();
+    ok.onclick = async () => {
+      const r = await act({ action: "charge_appt", id: a.id, amount: f.querySelector(".i-amt").value, method: f.querySelector(".i-met").value, tip: f.querySelector(".i-tip").value });
+      if (r.ok) after();
+    };
+  }
+  $("book").onsubmit = async e => {
+    e.preventDefault();
+    const r = await act({ action: "book", date: day, time: $("f-time").value, client: $("f-client").value, phone: $("f-phone").value,
+                          service: $("f-service").value, staff: $("f-staff").value, notes: $("f-notes").value });
+    if (r.ok) { ["f-client", "f-phone", "f-notes"].forEach(i => $(i).value = ""); $("f-service").value = ""; wantTime = ""; loadDay(); loadMeta(); }
+  };
+  $("f-voice").onclick = async () => {
+    const t = $("f-time").value, lbl = dayData ? dayData.label : day;
+    const text = `[SISTEMA] Mirta quiere reservar una cita el ${lbl} (${day})${t ? " a las " + t : ""}. Pregúntale, de una en una y muy breve, `
+      + `el nombre de la clienta o cliente y el servicio (y si quiere, con quién). Luego resérvala con la herramienta salon y confírmalo.`;
+    try { await fetch(BASE + "/chat", { method: "POST", headers: { ...AUTH, "Content-Type": "application/json" }, body: JSON.stringify({ text }) }); toast("Lumi le va a preguntar los datos"); }
+    catch { toast("Lumi no responde", true); }
+    setTimeout(loadDay, 30000);
+  };
+
+  // ───────── caja ─────────
+  async function loadCash() {
+    let d; try { d = await get("/salon_panel?kind=cash"); } catch { toast("Lumi no responde", true); return; }
+    const st = (v, l) => `<div class="stat"><div class="n">${money(v.total)}</div><div class="l">${l} · ${v.tickets} ticket(s)${v.tips ? " · propinas " + money(v.tips) : ""}</div></div>`;
+    $("c-stats").innerHTML = st(d.today, "Hoy") + st(d.week, "Semana") + st(d.month, "Mes");
+    const box = $("c-sales");
+    box.innerHTML = d.sales.length ? `<table><tr><th>Hora</th><th>Concepto</th><th>Pago</th><th class="r">Total</th><th></th></tr>
+      ${d.sales.map(s => `<tr data-id="${s.id}"><td>${s.t}</td><td>${esc(s.what || "—")}${s.client ? `<div style="color:var(--dim);font-size:12px">${esc(s.client)}</div>` : ""}</td>
+        <td class="m">${esc(s.method)}</td><td class="r a">${money(s.total)}${s.tip ? `<div style="color:var(--dim);font-size:12px">+${money(s.tip)}</div>` : ""}</td>
+        <td class="r" style="white-space:nowrap"><button class="b sm" data-do="edit">Editar</button> <button class="b sm danger" data-do="del">Borrar</button></td></tr>`).join("")}</table>`
+      : `<div class="empty">Todavía no hay cobros hoy.</div>`;
+    box.querySelectorAll("tr[data-id]").forEach(tr => {
+      const s = d.sales.find(x => x.id == tr.dataset.id);
+      tr.querySelector('[data-do="del"]').onclick = async e => { if (!armed(e.target)) return; const r = await act({ action: "sale_delete", id: s.id }); if (r.ok) loadCash(); };
+      tr.querySelector('[data-do="edit"]').onclick = () => {
+        tr.querySelector(".m").innerHTML = `<select>${meta.methods.map(m => `<option ${m === s.method ? "selected" : ""}>${m}</option>`).join("")}</select>`;
+        tr.querySelector(".a").innerHTML = `<input inputmode="decimal" value="${s.total}" style="width:90px;text-align:right"><input inputmode="decimal" value="${s.tip || ""}" placeholder="propina" style="width:90px;text-align:right;margin-top:4px">`;
+        const cell = tr.lastElementChild; cell.innerHTML = `<button class="b pri sm">Guardar</button> <button class="b sm">✕</button>`;
+        const [ok, no] = cell.querySelectorAll("button"); no.onclick = loadCash;
+        ok.onclick = async () => { const [amt, tip] = tr.querySelectorAll(".a input");
+          const r = await act({ action: "sale_edit", id: s.id, amount: amt.value, tip: tip.value, method: tr.querySelector(".m select").value }); if (r.ok) loadCash(); };
+      };
+    });
+    const pend = $("c-pending");
+    pend.innerHTML = d.pending.length ? d.pending.map(a => `<div class="appt" data-id="${a.id}"><div class="t">${a.t}</div>
+        <div><div class="c">${esc(a.client || "—")}</div><div class="s">${esc(a.service || "")} · ${money(a.price)}</div></div>
+        <div class="acts"><button class="b sm" type="button">Cobrar</button></div></div>`).join("") : `<div class="empty">No hay citas pendientes de cobro.</div>`;
+    pend.querySelectorAll(".appt").forEach(row => { const a = d.pending.find(x => x.id == row.dataset.id); row.querySelector("button").onclick = () => chargeForm(row, a, loadCash); });
+  }
+  $("sale").onsubmit = async e => {
+    e.preventDefault();
+    const r = await act({ action: "sale_add", concept: $("s-concept").value, amount: $("s-amount").value, method: $("s-method").value, client: $("s-client").value });
+    if (r.ok) { ["s-concept", "s-amount", "s-client"].forEach(i => $(i).value = ""); loadCash(); }
+  };
+
+  // ───────── stock ─────────
+  let stock = [];
+  async function loadStock() {
+    let d; try { d = await get("/salon_panel?kind=stock"); } catch { toast("Lumi no responde", true); return; }
+    stock = d.items;
+    $("p-stats").innerHTML = `<div class="stat"><div class="n">${d.items.length}</div><div class="l">Productos</div></div>
+      <div class="stat"><div class="n">${d.low}</div><div class="l">Bajo mínimo</div></div>
+      <div class="stat"><div class="n">${money(d.value)}</div><div class="l">Valor a coste</div></div>`;
+    $("p-table").innerHTML = d.items.length ? `<table><tr><th>Producto</th><th>Cantidad</th><th class="r">Mín.</th><th class="r">Pedir</th><th></th></tr>
+      ${d.items.map(i => `<tr data-id="${i.id}" class="${i.low ? "low" : ""}"><td>${esc(i.name)}${i.low ? '<span class="tag">bajo</span>' : ""}
+          ${i.supplier ? `<div style="color:var(--dim);font-size:12px">${esc(i.supplier)}</div>` : ""}</td>
+        <td><span class="qty"><button type="button" data-d="-1" aria-label="Quitar uno">−</button><b>${i.stock} ${esc(i.unit)}</b><button type="button" data-d="1" aria-label="Añadir uno">+</button></span></td>
+        <td class="r">${i.min}</td><td class="r">${i.low ? i.need : ""}</td>
+        <td class="r" style="white-space:nowrap"><button class="b sm" data-do="edit">Editar</button> <button class="b sm danger" data-do="del">Quitar</button></td></tr>`).join("")}</table>`
+      : `<div class="empty">El inventario está vacío. Añada el primer producto con el formulario.</div>`;
+    document.querySelectorAll("#p-table tr[data-id]").forEach(tr => {
+      const i = stock.find(x => x.id == tr.dataset.id);
+      tr.querySelectorAll("[data-d]").forEach(b => b.onclick = async () => { const r = await act({ action: "stock_adjust", id: i.id, delta: +b.dataset.d }); if (r.ok) loadStock(); });
+      tr.querySelector('[data-do="del"]').onclick = async e => { if (!armed(e.target)) return; const r = await act({ action: "product_delete", id: i.id }); if (r.ok) loadStock(); };
+      tr.querySelector('[data-do="edit"]').onclick = () => editProduct(i);
+    });
+  }
+  function editProduct(i) {
+    $("p-form-title").textContent = i ? "Editar producto" : "Añadir producto"; $("p-save").textContent = i ? "Guardar" : "Añadir"; $("p-new").hidden = !i;
+    $("p-id").value = i ? i.id : ""; $("p-name").value = i ? i.pname : ""; $("p-brand").value = i ? i.brand : ""; $("p-unit").value = i ? i.unit : "ud";
+    $("p-stock").value = i ? i.stock : 0; $("p-min").value = i ? i.min : 1; $("p-cost").value = i ? (i.cost || "") : ""; $("p-price").value = i ? (i.price || "") : "";
+    $("p-supplier").value = i ? i.supplier : ""; $("p-supplier").disabled = !!i; if (i) $("p-name").focus();
+  }
+  $("p-new").onclick = () => editProduct(null);
+  $("prod").onsubmit = async e => {
+    e.preventDefault();
+    const r = await act({ action: "product_save", id: $("p-id").value, name: $("p-name").value, brand: $("p-brand").value, unit: $("p-unit").value,
+                          stock: $("p-stock").value, min_stock: $("p-min").value, cost: $("p-cost").value, price: $("p-price").value, supplier: $("p-supplier").value });
+    if (r.ok) { editProduct(null); loadStock(); }
+  };
+
+  loadMeta().then(() => show(["agenda", "cash", "stock"].includes(params.get("tab")) ? params.get("tab") : "agenda"));
+  setInterval(() => { if (tab === "cash" && !document.querySelector("#c-sales input, .inline")) loadCash(); }, 60000);
+})();
+</script>
+</body>
+</html>

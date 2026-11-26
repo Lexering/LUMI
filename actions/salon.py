@@ -638,7 +638,7 @@ def panel_data(kind: str) -> dict:
             return {"total": round(r["t"], 2), "tips": round(r["tip"], 2), "tickets": r["n"]}
         tm = today + timedelta(days=1)
         s, e = today.isoformat(), tm.isoformat()
-        sales = q("""SELECT sa.ts, sa.total, sa.tip, sa.method, sa.items, c.name client, st.name staff FROM sales sa
+        sales = q("""SELECT sa.id, sa.ts, sa.total, sa.tip, sa.method, sa.items, c.name client, st.name staff FROM sales sa
                      LEFT JOIN clients c ON c.id=sa.client_id LEFT JOIN staff st ON st.id=sa.staff_id
                      WHERE sa.ts>=? AND sa.ts<? ORDER BY sa.ts DESC""", (s, e))
         def what(js):
@@ -654,20 +654,144 @@ def panel_data(kind: str) -> dict:
                 "by_staff": [{"name": x["name"], "total": round(x["t"], 2), "commission": round(x["t"] * (x["pct"] or 0) / 100, 2)} for x in
                              q("""SELECT st.name, SUM(sa.total) t, st.commission_pct pct FROM sales sa JOIN staff st ON st.id=sa.staff_id
                                   WHERE sa.ts>=? AND sa.ts<? GROUP BY st.id ORDER BY t DESC""", (s, e))],
-                "sales": [{"t": r["ts"][11:16], "client": r["client"] or "", "staff": r["staff"] or "", "total": r["total"],
+                "sales": [{"id": r["id"], "t": r["ts"][11:16], "client": r["client"] or "", "staff": r["staff"] or "", "total": r["total"],
                            "tip": r["tip"], "method": r["method"], "what": what(r["items"])} for r in sales],
-                "pending": [{"t": a["start"][11:16], "client": a["client"], "service": a["service"]}
+                "pending": [{"id": a["id"], "t": a["start"][11:16], "client": a["client"], "service": a["service"], "price": a["price"]}
                             for a in appointments_on(today) if a["status"] in ("booked", "confirmed")
                             and a["start"] <= datetime.now().isoformat()]}
     if kind == "stock":
         rows = q("""SELECT p.*, s.name supplier FROM products p LEFT JOIN suppliers s ON s.id=p.supplier_id
                     WHERE p.active=1 ORDER BY (p.stock<=p.min_stock) DESC, p.category, p.name""")
-        items = [{"name": f"{r['brand']} {r['name']}".strip(), "category": r["category"] or "", "stock": r["stock"],
+        items = [{"id": r["id"], "pname": r["name"], "brand": r["brand"] or "", "cost": r["cost"], "price": r["price"], "name": f"{r['brand']} {r['name']}".strip(), "category": r["category"] or "", "stock": r["stock"],
                   "min": r["min_stock"], "unit": r["unit"] or "", "low": r["stock"] <= r["min_stock"],
                   "supplier": r["supplier"] or "", "need": max(r["min_stock"] * 2 - r["stock"], 1)} for r in rows]
         return {"ok": True, "kind": kind, "items": items, "low": sum(i["low"] for i in items),
                 "value": round(sum(r["stock"] * (r["cost"] or 0) for r in rows), 2)}
     return {"ok": False, "error": "unknown panel"}
+
+
+def panel_meta() -> dict:
+    return {"ok": True,
+            "services": [{"id": s["id"], "name": s["name"], "min": s["duration_min"], "price": s["price"]}
+                         for s in q("SELECT * FROM services WHERE active=1 ORDER BY name")],
+            "staff": [{"id": s["id"], "name": s["name"]} for s in q("SELECT id, name FROM staff WHERE active=1 ORDER BY name")],
+            "clients": [{"id": c["id"], "name": c["name"], "phone": c["phone"] or ""}
+                        for c in q("SELECT id, name, phone FROM clients ORDER BY name LIMIT 2000")],
+            "methods": ["efectivo", "tarjeta", "bizum", "transferencia"]}
+
+
+def day_data(day_s: str) -> dict:
+    """One day for the agenda screen: opening hours, appointments and free 30-min slots."""
+    try:
+        d = date.fromisoformat(day_s) if day_s else date.today()
+    except ValueError:
+        d = date.today()
+    hours = _hours_for(d)
+    apps = appointments_on(d)
+    slots = []
+    if hours:
+        staff = q("SELECT * FROM staff WHERE active=1") or [None]
+        t, now = hours[0], datetime.now()
+        while t + timedelta(minutes=30) <= hours[1]:
+            if t > now:
+                free = [s["name"] if s else "" for s in staff if not _busy(s["id"] if s else None, t, t + timedelta(minutes=30))]
+                if free:
+                    slots.append({"t": t.strftime("%H:%M"), "staff": free})
+            t += timedelta(minutes=30)
+    return {"ok": True, "date": d.isoformat(), "label": fday(d), "closed": not hours,
+            "open": hours[0].strftime("%H:%M") if hours else None, "close": hours[1].strftime("%H:%M") if hours else None,
+            "slots": slots,
+            "appointments": [{"id": a["id"], "t": a["start"][11:16], "end": a["end"][11:16], "status": a["status"],
+                              "client": a["client"] or "", "phone": a["client_phone"] or "", "service": a["service"] or "",
+                              "staff": a["staff"] or "", "price": a["price"], "allergies": a["allergies"] or "",
+                              "notes": a["notes"] or ""} for a in apps]}
+
+
+def _f(v, default=0.0) -> float:
+    try:
+        return float(str(v).replace(",", ".")) if v not in (None, "") else default
+    except ValueError:
+        return default
+
+
+def panel_action(b: dict) -> dict:
+    """Edits made from the desktop screens (agenda, caja, stock). Returns {"ok", "msg"}."""
+    a = b.get("action", "")
+    try:
+        if a == "book":
+            name = (b.get("client") or "").strip()
+            if not name or not b.get("service") or not b.get("time"):
+                return {"ok": False, "msg": "Falta el nombre, el servicio o la hora."}
+            exact = q1("SELECT * FROM clients WHERE lower(name)=lower(?)", (name,))
+            phone = (b.get("phone") or "").strip()
+            if exact and phone and not exact.get("phone"):
+                update_client(exact["id"], phone=phone)
+            elif not exact:
+                add_client(name, phone=phone)
+            msg = book(name, b["service"], f"{b.get('date') or date.today().isoformat()} {b['time']}",
+                       b.get("staff") or "", phone, b.get("notes") or "")
+            return {"ok": msg.startswith("Cita #"), "msg": msg}
+        if a == "cancel":
+            return {"ok": True, "msg": cancel(appt_id=int(b["id"]), noshow=bool(b.get("noshow")))}
+        if a == "charge_appt":
+            msg = charge(appt_id=int(b["id"]), method=b.get("method") or "efectivo", tip=_f(b.get("tip")),
+                         amount=b.get("amount") if b.get("amount") not in (None, "") else None)
+            return {"ok": msg.startswith("Cobrado"), "msg": msg}
+        if a == "sale_add":
+            total = _f(b.get("amount"))
+            if total <= 0:
+                return {"ok": False, "msg": "Pon un importe."}
+            c = q1("SELECT * FROM clients WHERE lower(name)=lower(?)", ((b.get("client") or "").strip(),)) if b.get("client") else None
+            items = [{"type": "manual", "name": (b.get("concept") or "Venta").strip(), "price": total}]
+            sid = run("INSERT INTO sales(ts, client_id, total, tip, method, items, notes) VALUES(?,?,?,?,?,?,?)",
+                      (now_iso(), c["id"] if c else None, total, _f(b.get("tip")), b.get("method") or "efectivo",
+                       json.dumps(items, ensure_ascii=False), "manual"))
+            return {"ok": True, "msg": f"Cobro de {total:.2f} € añadido (ticket #{sid})."}
+        if a == "sale_edit":
+            s = q1("SELECT * FROM sales WHERE id=?", (int(b["id"]),))
+            if not s:
+                return {"ok": False, "msg": "No encuentro ese ticket."}
+            run("UPDATE sales SET total=?, tip=?, method=? WHERE id=?",
+                (_f(b.get("amount"), s["total"]), _f(b.get("tip"), s["tip"]), b.get("method") or s["method"], s["id"]))
+            return {"ok": True, "msg": f"Ticket #{s['id']} corregido."}
+        if a == "sale_delete":
+            s = q1("SELECT * FROM sales WHERE id=?", (int(b["id"]),))
+            if not s:
+                return {"ok": False, "msg": "No encuentro ese ticket."}
+            run("DELETE FROM sales WHERE id=?", (s["id"],))
+            if s["appointment_id"]:          # the appointment goes back to "pending payment"
+                run("UPDATE appointments SET status='booked' WHERE id=? AND status='done'", (s["appointment_id"],))
+            return {"ok": True, "msg": f"Ticket #{s['id']} borrado."}
+        if a == "stock_adjust":
+            p = q1("SELECT * FROM products WHERE id=?", (int(b["id"]),))
+            if not p:
+                return {"ok": False, "msg": "No encuentro ese producto."}
+            p = move_stock(p, _f(b.get("delta")), "ajuste", "pantalla")
+            return {"ok": True, "msg": f"{p['name']}: quedan {p['stock']:g}."}
+        if a == "product_save":
+            name = (b.get("name") or "").strip()
+            if not name:
+                return {"ok": False, "msg": "Pon el nombre del producto."}
+            vals = (name, (b.get("brand") or "").strip(), (b.get("unit") or "ud").strip() or "ud", _f(b.get("min_stock")),
+                    _f(b.get("cost")), _f(b.get("price")))
+            if b.get("id"):
+                p = q1("SELECT * FROM products WHERE id=?", (int(b["id"]),))
+                if not p:
+                    return {"ok": False, "msg": "No encuentro ese producto."}
+                run("UPDATE products SET name=?, brand=?, unit=?, min_stock=?, cost=?, price=? WHERE id=?", vals + (p["id"],))
+                new_stock = _f(b.get("stock"), p["stock"])
+                if new_stock != p["stock"]:
+                    move_stock(p, new_stock - p["stock"], "ajuste", "pantalla")
+                return {"ok": True, "msg": f"{name} guardado."}
+            add_product(name, brand=vals[1], stock=_f(b.get("stock")), min_stock=vals[3], cost=vals[4], price=vals[5],
+                        unit=vals[2], supplier=(b.get("supplier") or "").strip())
+            return {"ok": True, "msg": f"{name} añadido al inventario."}
+        if a == "product_delete":
+            run("UPDATE products SET active=0 WHERE id=?", (int(b["id"]),))
+            return {"ok": True, "msg": "Producto quitado del inventario."}
+    except Exception as e:
+        return {"ok": False, "msg": f"No se pudo: {e}"}
+    return {"ok": False, "msg": "Acción desconocida."}
 
 
 # ───────────────────────── automations ─────────────────────────

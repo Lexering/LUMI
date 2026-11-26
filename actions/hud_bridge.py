@@ -498,7 +498,7 @@ def open_app(key: str):
 
 # ───────────────────────── chat and settings windows ─────────────────────────
 
-WINDOWS = {"chat": (440, 720), "settings": (440, 600), "world": (1320, 820), "boards": (1320, 820)}
+WINDOWS = {"salon": (1100, 780), "chat": (440, 720), "settings": (440, 600), "world": (1320, 820), "boards": (1320, 820)}
 
 
 def _browser_exe():
@@ -550,7 +550,7 @@ def open_window(page: str, extra: str = "") -> bool:
         import ctypes
         sw = ctypes.windll.user32.GetSystemMetrics(0)
         x = max(0, sw - w - 420)          # just left of the wallpaper panels
-        if page in ("world", "boards"):
+        if page in ("world", "boards", "salon"):
             x = max(0, (sw - w) // 2)
     except Exception:
         pass
@@ -964,7 +964,7 @@ def speak_news() -> dict:
 # ───────────────────────── HTTP server ─────────────────────────
 
 PROTECTED = ("/news", "/weather", "/geocode", "/settings", "/open", "/news_speak", "/window",
-             "/chat", "/upload", "/action", "/chatlog", "/world_events", "/boards", "/lumi_event", "/salon_today", "/salon_panel")
+             "/chat", "/upload", "/action", "/chatlog", "/world_events", "/boards", "/lumi_event", "/salon_today", "/salon_panel", "/salon_action")
 MAX_UPLOAD = 100 * 1024 * 1024
 
 
@@ -1040,7 +1040,13 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send_json(salon.today_summary())
                 elif route == "/salon_panel":
                     from actions import salon
-                    self._send_json(salon.panel_data(q.get("kind", [""])[0]))
+                    kind = q.get("kind", [""])[0]
+                    if kind == "meta":
+                        self._send_json(salon.panel_meta())
+                    elif kind == "day":
+                        self._send_json(salon.day_data(q.get("date", [""])[0]))
+                    else:
+                        self._send_json(salon.panel_data(kind))
                 elif route == "/world_events":
                     from actions import world_monitor
                     self._send_json({"ok": True, **world_monitor.get_events(force="refresh" in q)})
@@ -1140,6 +1146,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(speak_news())
         elif route == "/window":
             extra = "menu=1" if q.get("menu") else ""
+            if q.get("tab"):
+                from urllib.parse import urlencode
+                extra = urlencode({k: q[k][0] for k in ("tab", "date", "time") if q.get(k)})
             ok = open_window(q.get("page", [""])[0], extra)
             self._send_json({"ok": ok}, 200 if ok else 400)
         elif route == "/settings":
@@ -1157,6 +1166,12 @@ class _Handler(BaseHTTPRequestHandler):
             }
             ok = ev in texts and _send_to_alberto(texts[ev])
             self._send_json({"ok": bool(ok)})
+        elif route == "/salon_action":
+            from actions import salon
+            body = json.loads(self._read_body() or b"{}")
+            res = salon.panel_action(body)
+            print(f"[Lumi] Pantalla: {body.get('action')} -> {res.get('msg')}")
+            self._send_json(res)
         elif route == "/chat":
             body = json.loads(self._read_body() or b"{}")
             ok, info = chat(body.get("text", ""), body.get("file", ""))

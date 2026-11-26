@@ -94,6 +94,8 @@
   .veil.show { display: flex; }
   .panel { width: min(760px, 88vw); max-height: 82vh; display: flex; flex-direction: column; background: rgba(22, 28, 17, .94);
            border: 1px solid var(--line-hi); border-radius: 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, .5); overflow: hidden; }
+  .panel.frame { width: min(1180px, 92vw); height: min(860px, 88vh); max-height: none; }
+  .panel.frame iframe { border: 0; width: 100%; height: 100%; background: #151b10; }
   .panel header { display: flex; align-items: center; gap: 14px; padding: 22px 26px 14px; border-bottom: 1px solid var(--line); }
   .panel h2 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: 30px; color: var(--cream); flex: 1; }
   .panel .x { background: none; border: 1px solid var(--line); color: var(--cream); width: 36px; height: 36px; border-radius: 50%; font-size: 18px; cursor: pointer; }
@@ -171,15 +173,11 @@
   </div>
 </div>
 <div class="toast" id="toast" role="status"></div>
-<div class="veil" id="veil"><div class="panel" role="dialog" aria-modal="true" aria-labelledby="p-title">
-  <header><h2 id="p-title"></h2><button class="x" id="p-close" type="button" aria-label="Cerrar">✕</button></header>
-  <div class="body" id="p-body"></div>
-  <div class="foot"><button class="pill" id="p-refresh" type="button">Actualizar</button><button class="pill" id="p-ask" type="button">Preguntar a Lumi</button></div>
-</div></div>
+<div class="veil" id="veil"><div class="panel frame"><iframe id="p-frame" title="Salón" src="about:blank"></iframe></div></div>
 <script>
 (() => {
   const BASE = "http://127.0.0.1:5055";
-  const TOKEN = "__HUD_TOKEN__";
+  const TOKEN = "b44a3f6f88c95bc3a19fcde88eead22c657b4f56";
   const AUTH = { "X-Lumi-Token": TOKEN };
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -324,54 +322,26 @@
     if (r && r.ok === false && live.state !== "OFFLINE") toast("No se pudo abrir la ventana");
   });
 
-  // ───────── panels: Huecos / Caja / Stock ─────────
-  const PANELS = {
-    slots: { title: "Huecos libres", ask: "¿Qué huecos libres quedan hoy?" },
-    cash:  { title: "Caja", ask: "Hazme el resumen de caja de hoy." },
-    stock: { title: "Stock", ask: "¿Qué productos hay que pedir?" },
-  };
-  let panelKind = "";
-  const renders = {
-    slots(d) {
-      if (!d.days.length) return `<div class="empty">No hay huecos libres en los próximos días.</div>`;
-      return d.days.map(day => `<h3>${esc(day.label)} · ${day.open}–${day.close}</h3>` + (day.slots.length
-        ? `<div class="chips">${day.slots.map(s => `<span class="chip">${s.t}${s.staff ? `<small>${esc(s.staff)}</small>` : ""}</span>`).join("")}</div>`
-        : `<div class="empty">Completo.</div>`)).join("")
-        + `<h3>Para reservar</h3><div class="empty">Diga a Lumi, por ejemplo: «Cita para Ana, corte, hoy a las ${esc((d.days[0].slots[0] || {}).t || "17:00")}».</div>`;
-    },
-    cash(d) {
-      const st = (v, l) => `<div class="stat"><div class="n">${money(v.total)}</div><div class="l">${l} · ${v.tickets} ticket(s)</div></div>`;
-      let h = `<div class="stats">${st(d.today, "Hoy")}${st(d.week, "Semana")}${st(d.month, "Mes")}</div>`;
-      if (d.today.tips) h += `<h3>Propinas hoy</h3><div class="chip" style="display:inline-block">${money(d.today.tips)}</div>`;
-      if (d.by_method.length) h += `<h3>Por forma de pago</h3><div class="chips">${d.by_method.map(m => `<span class="chip">${money(m.total)}<small>${esc(m.method)}</small></span>`).join("")}</div>`;
-      if (d.by_staff.length) h += `<h3>Por persona</h3><table class="t"><tr><th>Nombre</th><th class="r">Total</th><th class="r">Comisión</th></tr>${d.by_staff.map(s => `<tr><td>${esc(s.name)}</td><td class="r">${money(s.total)}</td><td class="r">${money(s.commission)}</td></tr>`).join("")}</table>`;
-      if (d.pending.length) h += `<h3>Sin cobrar</h3><table class="t">${d.pending.map(p => `<tr><td>${p.t}</td><td>${esc(p.client || "")}</td><td>${esc(p.service || "")}</td></tr>`).join("")}</table>`;
-      h += `<h3>Tickets de hoy</h3>` + (d.sales.length ? `<table class="t"><tr><th>Hora</th><th>Cliente</th><th>Concepto</th><th>Pago</th><th class="r">Total</th></tr>${d.sales.map(s => `<tr><td>${s.t}</td><td>${esc(s.client)}</td><td>${esc(s.what)}</td><td>${esc(s.method)}</td><td class="r">${money(s.total)}</td></tr>`).join("")}</table>` : `<div class="empty">Todavía no hay cobros hoy.</div>`);
-      return h;
-    },
-    stock(d) {
-      if (!d.items.length) return `<div class="empty">El inventario está vacío. Diga a Lumi: «Añade al inventario 6 tintes Majirel 7.1, mínimo 2».</div>`;
-      return `<div class="stats"><div class="stat"><div class="n">${d.items.length}</div><div class="l">Productos</div></div>
-        <div class="stat"><div class="n">${d.low}</div><div class="l">Bajo mínimo</div></div>
-        <div class="stat"><div class="n">${money(d.value)}</div><div class="l">Valor a coste</div></div></div>
-        <h3>Inventario</h3><table class="t"><tr><th>Producto</th><th>Proveedor</th><th class="r">Quedan</th><th class="r">Mín.</th><th class="r">Pedir</th></tr>
-        ${d.items.map(i => `<tr class="${i.low ? "low" : ""}"><td>${esc(i.name)}${i.low ? '<span class="tag">bajo</span>' : ""}</td><td>${esc(i.supplier)}</td>
-          <td class="r">${i.stock} ${esc(i.unit)}</td><td class="r">${i.min}</td><td class="r">${i.low ? i.need : ""}</td></tr>`).join("")}</table>`;
-    },
-  };
-  async function loadPanel() {
-    const kind = panelKind; $("p-body").innerHTML = `<div class="empty">Cargando…</div>`;
-    let d; try { d = await api(`/salon_panel?kind=${kind}`, { timeout: 15000 }); } catch { d = null; }
-    if (kind !== panelKind) return;
-    $("p-body").innerHTML = d && d.ok ? renders[kind](d) : `<div class="empty">${live.state === "OFFLINE" ? "Lumi todavía no está en marcha." : "No se pudieron cargar los datos."}</div>`;
+  // ───────── Huecos / Caja / Stock: the salon screen (agenda, caja, stock, all editable) ─────────
+  // Mac: inside the desktop (it can type there). Windows/Lively: its own window, because Lively
+  // only passes the mouse to the wallpaper and the forms need the keyboard.
+  const TABS = { slots: "agenda", cash: "cash", stock: "stock" };
+  const IS_MAC = /Mac/.test(navigator.platform || navigator.userAgent);
+  function openPanel(kind) {
+    const tab = TABS[kind] || "agenda";
+    if (live.state === "OFFLINE") { toast("Lumi todavía no está en marcha"); return; }
+    if (IS_MAC) {
+      $("p-frame").src = `${BASE}/ui/salon?embed=1&tab=${tab}&r=${Date.now()}`;
+      $("veil").classList.add("show");
+    } else {
+      toast("Abriendo…");
+      post(`/window?page=salon&tab=${tab}`);
+    }
   }
-  function openPanel(kind) { panelKind = kind; $("p-title").textContent = PANELS[kind].title; $("veil").classList.add("show"); loadPanel(); }
-  function closePanel() { panelKind = ""; $("veil").classList.remove("show"); }
+  function closePanel() { $("veil").classList.remove("show"); $("p-frame").src = "about:blank"; loadSalon(); }
   document.querySelectorAll("[data-panel]").forEach(b => b.onclick = () => openPanel(b.dataset.panel));
-  $("p-close").onclick = closePanel;
   $("veil").onclick = e => { if (e.target.id === "veil") closePanel(); };
-  $("p-refresh").onclick = loadPanel;
-  $("p-ask").onclick = () => { const a = PANELS[panelKind]; if (a) { toast("Preguntando a Lumi…"); post("/chat", { text: a.ask }); } };
+  window.addEventListener("message", e => { if (e.data === "lumi-close") closePanel(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
   const mute = async () => { try { await fetch(BASE + "/mute", { method: "POST" }); } catch {} };
   $("mic").onclick = mute; $("orb").onclick = mute;
