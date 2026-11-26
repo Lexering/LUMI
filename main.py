@@ -325,6 +325,12 @@ try:
     from actions import salon as salon_mod
     _OFFICE_TOOLS.append(salon_mod.TOOL_DECLARATION)
     _OFFICE_TOOLS.append(salon_mod.RECIPES_DECLARATION)
+    _OFFICE_TOOLS.append({
+        "name": "update_lumi",
+        "description": ("Updates Lumi itself from GitHub. Use for 'actualízate', 'busca actualizaciones', 'qué versión tienes'. "
+                        "action=update (install the newest version and restart) | check."),
+        "parameters": {"type": "OBJECT", "properties": {"action": {"type": "STRING", "description": "update | check"}}, "required": []},
+    })
 except Exception as _e:
     print(f"[Lumi] Salon system disabled: {_e}")
     salon_mod = None
@@ -1495,6 +1501,11 @@ class JarvisLive:
         except Exception as e:
             print(f"[Lumi] Centinela de ciberseguridad no disponible: {e}")
         try:
+            from actions import self_update
+            self_update.start(restart_cb=self._restart_after_update)
+        except Exception as e:
+            print(f"[Lumi] Actualizador no disponible: {e}")
+        try:
             from actions import gmail_box
             gmail_box.start(log=log)
         except Exception as e:
@@ -1645,6 +1656,24 @@ class JarvisLive:
             self.ui.set_state("SPEAKING")
         elif not self.ui.muted:
             self.ui.set_state("LISTENING")
+
+    def _restart_after_update(self, version):
+        """New version installed: say it, wait until Lumi isn't talking, then let the guardian start the new one."""
+        try:
+            self.ui.write_log(f"SYS: Lumi actualizada a la versión {version}")
+            self.speak(f"[SISTEMA — no leas esto en voz alta] Te acabas de actualizar a la versión {version}. "
+                       "Díselo a Mirta en UNA frase corta y profesional (vuelves en unos segundos). No llames a herramientas.")
+        except Exception:
+            pass
+        time.sleep(8)
+        for _ in range(60):
+            with self._speaking_lock:
+                busy = self._is_speaking
+            if not busy:
+                break
+            time.sleep(1)
+        print("[Lumi] Reinicio para usar la versión nueva")
+        os._exit(75)
 
     def speak(self, text: str):
         if not self._loop or not self.session:
@@ -1841,6 +1870,9 @@ class JarvisLive:
             elif name == "salon" and salon_mod is not None:
                 r = await loop.run_in_executor(None, lambda: salon_mod.salon_tool(parameters=args, player=self.ui, speak=self.speak))
                 result = r or "Done."
+            elif name == "update_lumi":
+                from actions import self_update as _su
+                result = await loop.run_in_executor(None, lambda: _su.update_tool(args))
             elif name == "recipes" and salon_mod is not None:
                 result = await loop.run_in_executor(None, lambda: salon_mod.recipes_tool(args, player=self.ui, speak=self.speak))
             elif name == "boards" and boards_mod is not None:

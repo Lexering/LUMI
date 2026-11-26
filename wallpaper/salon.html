@@ -307,6 +307,11 @@
           </form>
         </div>
         <div class="box" style="margin-top:16px">
+          <h3>Actualizaciones</h3>
+          <div style="display:flex;gap:10px;align-items:center"><span id="upd-info" style="flex:1">…</span><button class="b" id="upd-btn" type="button">Buscar actualización</button></div>
+          <div class="hint">Lumi se actualiza sola cada pocas horas; este botón lo hace ahora.</div>
+        </div>
+        <div class="box" style="margin-top:16px">
           <h3>Formas de pago</h3>
           <div class="chips" id="methods"></div>
           <form id="m-add" style="display:flex;gap:8px;margin-top:10px" autocomplete="off">
@@ -565,7 +570,16 @@
 
   // ───────── ajustes: servicios, horario, equipo, formas de pago ─────────
   const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
-  async function loadSettings() { await loadMeta(); renderServices(); renderHours(); renderTeam(); renderMethods(); }
+  async function updStatus() {
+    try { const s = await get("/update"); $("upd-info").textContent = `Versión ${s.version}` + (s.remote ? ` · disponible: ${s.remote}` : "") + (s.checking ? " · buscando…" : s.last ? ` · ${s.last}` : ""); return s; }
+    catch { $("upd-info").textContent = "—"; }
+  }
+  $("upd-btn").onclick = async () => {
+    try { await fetch(BASE + "/update", { method: "POST", headers: AUTH }); } catch {}
+    toast("Buscando actualización…"); let n = 0;
+    const iv = setInterval(async () => { const s = await updStatus(); if (++n > 60 || (s && !s.checking && n > 2)) clearInterval(iv); }, 2000);
+  };
+  async function loadSettings() { updStatus(); await loadMeta(); renderServices(); renderHours(); renderTeam(); renderMethods(); }
   function renderServices() {
     const words = norm($("sv-q").value).split(/\s+/).filter(Boolean);
     const list = meta.services.filter(s => words.every(w => norm(s.name + " " + s.cat).includes(w)));

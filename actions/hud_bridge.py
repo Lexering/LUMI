@@ -1045,7 +1045,7 @@ def speak_news() -> dict:
 # ───────────────────────── HTTP server ─────────────────────────
 
 PROTECTED = ("/news", "/weather", "/geocode", "/settings", "/open", "/news_speak", "/window",
-             "/chat", "/upload", "/action", "/chatlog", "/world_events", "/boards", "/lumi_event", "/salon_today", "/salon_panel", "/salon_action", "/files", "/files_action")
+             "/chat", "/upload", "/action", "/chatlog", "/world_events", "/boards", "/lumi_event", "/salon_today", "/salon_panel", "/salon_action", "/files", "/files_action", "/update")
 MAX_UPLOAD = 100 * 1024 * 1024
 
 
@@ -1127,6 +1127,9 @@ class _Handler(BaseHTTPRequestHandler):
                 elif route == "/boards":
                     from actions import boards
                     self._send_json(boards.api({"op": "get"}))
+                elif route == "/update":
+                    from actions import self_update
+                    self._send_json({"ok": True, **self_update.status()})
                 elif route == "/files":
                     self._send_json(list_files())
                 elif route == "/salon_today":
@@ -1260,6 +1263,10 @@ class _Handler(BaseHTTPRequestHandler):
             }
             ok = ev in texts and _send_to_alberto(texts[ev])
             self._send_json({"ok": bool(ok)})
+        elif route == "/update":
+            from actions import self_update
+            threading.Thread(target=self_update.update, daemon=True).start()
+            self._send_json({"ok": True, "msg": "Buscando actualización…"})
         elif route == "/files_action":
             self._send_json(files_action(json.loads(self._read_body() or b"{}")))
         elif route == "/salon_action":
