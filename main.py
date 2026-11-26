@@ -2537,6 +2537,12 @@ def _setup_window_and_tray(ui):
     app = QApplication.instance()
     win = ui._win
     app.setQuitOnLastWindowClosed(False)      # cerrar la ventana la esconde, Lumi sigue vivo
+    if sys.platform == "darwin" and (Path(__file__).resolve().parent / "config" / "api_keys.json").exists():
+        try:   # Mac: no "Python" icon in the Dock and no Cmd+Q; Lumi lives in the menu bar like a system service
+            from AppKit import NSApplication
+            NSApplication.sharedApplication().setActivationPolicy_(1)   # NSApplicationActivationPolicyAccessory
+        except Exception as e:
+            print(f"[Lumi] Dock: {e}")
 
     def show_win():
         win.showNormal(); win.raise_(); win.activateWindow()
@@ -2644,7 +2650,13 @@ def _setup_window_and_tray(ui):
         act_dict.triggered.connect(stop_dictation)
         act_win.triggered.connect(lambda: apply("toggle"))
         act_mute.triggered.connect(lambda: setattr(ui, "muted", not ui.muted))
-        act_quit.triggered.connect(lambda: os._exit(0))
+        def _quit_for_real():
+            try:   # tells the guardian it was on purpose (on Mac it restarts otherwise)
+                (Path(__file__).resolve().parent / "logs" / "stop.flag").write_text("1")
+            except Exception:
+                pass
+            os._exit(0)
+        act_quit.triggered.connect(_quit_for_real)
         for a in (act_win, act_mute, act_sum, act_dict):
             menu.addAction(a)
         menu.addSeparator()
