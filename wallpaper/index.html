@@ -88,6 +88,34 @@
   .toast { position: fixed; left: 50%; bottom: 3vh; transform: translateX(-50%); padding: 10px 18px; border-radius: 999px; background: var(--card-hi);
            border: 1px solid var(--line-hi); color: var(--cream); font-size: 14px; opacity: 0; transition: opacity .25s; z-index: 5; }
   .toast.show { opacity: 1; }
+  /* panels (Huecos, Caja, Stock) */
+  .veil { position: fixed; inset: 0; z-index: 8; background: rgba(6, 8, 4, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+          display: none; align-items: center; justify-content: center; }
+  .veil.show { display: flex; }
+  .panel { width: min(760px, 88vw); max-height: 82vh; display: flex; flex-direction: column; background: rgba(22, 28, 17, .94);
+           border: 1px solid var(--line-hi); border-radius: 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, .5); overflow: hidden; }
+  .panel header { display: flex; align-items: center; gap: 14px; padding: 22px 26px 14px; border-bottom: 1px solid var(--line); }
+  .panel h2 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: 30px; color: var(--cream); flex: 1; }
+  .panel .x { background: none; border: 1px solid var(--line); color: var(--cream); width: 36px; height: 36px; border-radius: 50%; font-size: 18px; cursor: pointer; }
+  .panel .x:hover { border-color: var(--rose); }
+  .panel .body { padding: 18px 26px 22px; overflow-y: auto; }
+  .panel .foot { padding: 12px 26px 20px; display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid var(--line); }
+  .panel h3 { font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: var(--dim); font-weight: 500; margin: 18px 0 10px; }
+  .panel h3:first-child { margin-top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--cream); font-size: 15px;
+          font-variant-numeric: tabular-nums; }
+  .chip small { display: block; color: var(--dim); font-size: 11px; margin-top: 2px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat { padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); }
+  .stat .n { font-family: var(--serif); font-size: 30px; color: var(--cream); line-height: 1.1; }
+  .stat .l { font-size: 11px; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; margin-top: 4px; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.t td, table.t th { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; color: var(--cream); }
+  table.t th { color: var(--dim); font-weight: 500; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+  table.t td.r, table.t th.r { text-align: right; font-variant-numeric: tabular-nums; }
+  table.t tr.low td { color: #ffd0d0; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255, 138, 138, .45); color: #ffb3b3; margin-left: 6px; }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -106,7 +134,7 @@
       <div class="kpis">
         <div class="kpi"><div class="n" id="k-apps">–</div><div class="l">Citas</div></div>
         <div class="kpi"><div class="n" id="k-left">–</div><div class="l">Pendientes</div></div>
-        <div class="kpi"><div class="n" id="k-cash">–</div><div class="l">Caja</div></div>
+        <div class="kpi" data-panel="cash" style="cursor:pointer"><div class="n" id="k-cash">–</div><div class="l">Caja</div></div>
       </div>
     </section>
     <section class="card next" id="next-card">
@@ -122,9 +150,9 @@
     <div class="bubble" id="bubble"></div>
     <div class="actions">
       <button class="pill" id="mic" type="button"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Micro</button>
-      <button class="pill" data-ask="¿Qué huecos libres quedan hoy?" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Huecos</button>
-      <button class="pill" data-ask="Hazme el resumen de caja de hoy." type="button"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg>Caja</button>
-      <button class="pill" data-ask="¿Qué productos hay que pedir?" type="button"><svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg>Stock</button>
+      <button class="pill" data-panel="slots" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Huecos</button>
+      <button class="pill" data-panel="cash" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg>Caja</button>
+      <button class="pill" data-panel="stock" type="button"><svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg>Stock</button>
       <button class="pill" data-win="chat" type="button"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg>Chat</button>
       <button class="pill" data-win="boards" type="button"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>Tareas</button>
     </div>
@@ -143,6 +171,11 @@
   </div>
 </div>
 <div class="toast" id="toast" role="status"></div>
+<div class="veil" id="veil"><div class="panel" role="dialog" aria-modal="true" aria-labelledby="p-title">
+  <header><h2 id="p-title"></h2><button class="x" id="p-close" type="button" aria-label="Cerrar">✕</button></header>
+  <div class="body" id="p-body"></div>
+  <div class="foot"><button class="pill" id="p-refresh" type="button">Actualizar</button><button class="pill" id="p-ask" type="button">Preguntar a Lumi</button></div>
+</div></div>
 <script>
 (() => {
   const BASE = "http://127.0.0.1:5055";
@@ -249,7 +282,7 @@
   setInterval(loadWeather, 600000); setTimeout(loadWeather, 1500);
 
   // ───────── salon ─────────
-  const money = v => (v || 0).toLocaleString("es", { style: "currency", currency: "EUR", maximumFractionDigits: v % 1 ? 2 : 0 });
+  const money = v => (v || 0).toLocaleString("es", { style: "currency", currency: "EUR", minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: v % 1 ? 2 : 0 });
   async function loadSalon() {
     let d; try { d = await api("/salon_today"); } catch { return; }
     if (!d || !d.ok) return;
@@ -285,7 +318,61 @@
     try { return await api(path, { method: "POST", body, timeout }); } catch { return { ok: false }; }
   }
   document.querySelectorAll("[data-ask]").forEach(b => b.onclick = () => { toast("Preguntando a Lumi…"); post("/chat", { text: b.dataset.ask }); });
-  document.querySelectorAll("[data-win]").forEach(b => b.onclick = () => post(`/window?page=${b.dataset.win}`));
+  document.querySelectorAll("[data-win]").forEach(b => b.onclick = async () => {
+    toast("Abriendo…");
+    const r = await post(`/window?page=${b.dataset.win}`);
+    if (r && r.ok === false && live.state !== "OFFLINE") toast("No se pudo abrir la ventana");
+  });
+
+  // ───────── panels: Huecos / Caja / Stock ─────────
+  const PANELS = {
+    slots: { title: "Huecos libres", ask: "¿Qué huecos libres quedan hoy?" },
+    cash:  { title: "Caja", ask: "Hazme el resumen de caja de hoy." },
+    stock: { title: "Stock", ask: "¿Qué productos hay que pedir?" },
+  };
+  let panelKind = "";
+  const renders = {
+    slots(d) {
+      if (!d.days.length) return `<div class="empty">No hay huecos libres en los próximos días.</div>`;
+      return d.days.map(day => `<h3>${esc(day.label)} · ${day.open}–${day.close}</h3>` + (day.slots.length
+        ? `<div class="chips">${day.slots.map(s => `<span class="chip">${s.t}${s.staff ? `<small>${esc(s.staff)}</small>` : ""}</span>`).join("")}</div>`
+        : `<div class="empty">Completo.</div>`)).join("")
+        + `<h3>Para reservar</h3><div class="empty">Diga a Lumi, por ejemplo: «Cita para Ana, corte, hoy a las ${esc((d.days[0].slots[0] || {}).t || "17:00")}».</div>`;
+    },
+    cash(d) {
+      const st = (v, l) => `<div class="stat"><div class="n">${money(v.total)}</div><div class="l">${l} · ${v.tickets} ticket(s)</div></div>`;
+      let h = `<div class="stats">${st(d.today, "Hoy")}${st(d.week, "Semana")}${st(d.month, "Mes")}</div>`;
+      if (d.today.tips) h += `<h3>Propinas hoy</h3><div class="chip" style="display:inline-block">${money(d.today.tips)}</div>`;
+      if (d.by_method.length) h += `<h3>Por forma de pago</h3><div class="chips">${d.by_method.map(m => `<span class="chip">${money(m.total)}<small>${esc(m.method)}</small></span>`).join("")}</div>`;
+      if (d.by_staff.length) h += `<h3>Por persona</h3><table class="t"><tr><th>Nombre</th><th class="r">Total</th><th class="r">Comisión</th></tr>${d.by_staff.map(s => `<tr><td>${esc(s.name)}</td><td class="r">${money(s.total)}</td><td class="r">${money(s.commission)}</td></tr>`).join("")}</table>`;
+      if (d.pending.length) h += `<h3>Sin cobrar</h3><table class="t">${d.pending.map(p => `<tr><td>${p.t}</td><td>${esc(p.client || "")}</td><td>${esc(p.service || "")}</td></tr>`).join("")}</table>`;
+      h += `<h3>Tickets de hoy</h3>` + (d.sales.length ? `<table class="t"><tr><th>Hora</th><th>Cliente</th><th>Concepto</th><th>Pago</th><th class="r">Total</th></tr>${d.sales.map(s => `<tr><td>${s.t}</td><td>${esc(s.client)}</td><td>${esc(s.what)}</td><td>${esc(s.method)}</td><td class="r">${money(s.total)}</td></tr>`).join("")}</table>` : `<div class="empty">Todavía no hay cobros hoy.</div>`);
+      return h;
+    },
+    stock(d) {
+      if (!d.items.length) return `<div class="empty">El inventario está vacío. Diga a Lumi: «Añade al inventario 6 tintes Majirel 7.1, mínimo 2».</div>`;
+      return `<div class="stats"><div class="stat"><div class="n">${d.items.length}</div><div class="l">Productos</div></div>
+        <div class="stat"><div class="n">${d.low}</div><div class="l">Bajo mínimo</div></div>
+        <div class="stat"><div class="n">${money(d.value)}</div><div class="l">Valor a coste</div></div></div>
+        <h3>Inventario</h3><table class="t"><tr><th>Producto</th><th>Proveedor</th><th class="r">Quedan</th><th class="r">Mín.</th><th class="r">Pedir</th></tr>
+        ${d.items.map(i => `<tr class="${i.low ? "low" : ""}"><td>${esc(i.name)}${i.low ? '<span class="tag">bajo</span>' : ""}</td><td>${esc(i.supplier)}</td>
+          <td class="r">${i.stock} ${esc(i.unit)}</td><td class="r">${i.min}</td><td class="r">${i.low ? i.need : ""}</td></tr>`).join("")}</table>`;
+    },
+  };
+  async function loadPanel() {
+    const kind = panelKind; $("p-body").innerHTML = `<div class="empty">Cargando…</div>`;
+    let d; try { d = await api(`/salon_panel?kind=${kind}`, { timeout: 15000 }); } catch { d = null; }
+    if (kind !== panelKind) return;
+    $("p-body").innerHTML = d && d.ok ? renders[kind](d) : `<div class="empty">${live.state === "OFFLINE" ? "Lumi todavía no está en marcha." : "No se pudieron cargar los datos."}</div>`;
+  }
+  function openPanel(kind) { panelKind = kind; $("p-title").textContent = PANELS[kind].title; $("veil").classList.add("show"); loadPanel(); }
+  function closePanel() { panelKind = ""; $("veil").classList.remove("show"); }
+  document.querySelectorAll("[data-panel]").forEach(b => b.onclick = () => openPanel(b.dataset.panel));
+  $("p-close").onclick = closePanel;
+  $("veil").onclick = e => { if (e.target.id === "veil") closePanel(); };
+  $("p-refresh").onclick = loadPanel;
+  $("p-ask").onclick = () => { const a = PANELS[panelKind]; if (a) { toast("Preguntando a Lumi…"); post("/chat", { text: a.ask }); } };
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
   const mute = async () => { try { await fetch(BASE + "/mute", { method: "POST" }); } catch {} };
   $("mic").onclick = mute; $("orb").onclick = mute;
 

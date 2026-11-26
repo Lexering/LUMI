@@ -611,6 +611,65 @@ def today_summary() -> dict:
     }
 
 
+def panel_data(kind: str) -> dict:
+    """Structured data for the desktop panels (Huecos, Caja, Stock)."""
+    today = date.today()
+    if kind == "slots":
+        days = []
+        d = today
+        for _ in range(7):                      # today, and the next open days until 2 are shown
+            hours = _hours_for(d)
+            if hours:
+                sl = free_slots(d, 30, limit=60)
+                if sl or d != today:
+                    days.append({"date": d.isoformat(), "label": fday(d) if d != today else "hoy",
+                                 "open": hours[0].strftime("%H:%M"), "close": hours[1].strftime("%H:%M"),
+                                 "slots": [{"t": t.strftime("%H:%M"), "staff": s["name"] if s else ""} for t, s in sl if t.minute % 30 == 0]})
+            if len(days) >= 2:
+                break
+            d += timedelta(days=1)
+        svcs = [{"name": s["name"], "min": s["duration_min"], "price": s["price"]}
+                for s in q("SELECT name, duration_min, price FROM services WHERE active=1 ORDER BY name")]
+        return {"ok": True, "kind": kind, "days": days, "services": svcs}
+    if kind == "cash":
+        def tot(a: date, b: date):
+            r = q1("SELECT COALESCE(SUM(total),0) t, COALESCE(SUM(tip),0) tip, COUNT(*) n FROM sales WHERE ts>=? AND ts<?",
+                   (a.isoformat(), b.isoformat()))
+            return {"total": round(r["t"], 2), "tips": round(r["tip"], 2), "tickets": r["n"]}
+        tm = today + timedelta(days=1)
+        s, e = today.isoformat(), tm.isoformat()
+        sales = q("""SELECT sa.ts, sa.total, sa.tip, sa.method, sa.items, c.name client, st.name staff FROM sales sa
+                     LEFT JOIN clients c ON c.id=sa.client_id LEFT JOIN staff st ON st.id=sa.staff_id
+                     WHERE sa.ts>=? AND sa.ts<? ORDER BY sa.ts DESC""", (s, e))
+        def what(js):
+            try:
+                return ", ".join(i.get("name", "") for i in json.loads(js or "[]"))
+            except Exception:
+                return ""
+        return {"ok": True, "kind": kind,
+                "today": tot(today, tm), "week": tot(today - timedelta(days=today.weekday()), tm),
+                "month": tot(today.replace(day=1), tm),
+                "by_method": [{"method": m["method"], "total": round(m["t"], 2)} for m in
+                              q("SELECT method, SUM(total) t FROM sales WHERE ts>=? AND ts<? GROUP BY method ORDER BY t DESC", (s, e))],
+                "by_staff": [{"name": x["name"], "total": round(x["t"], 2), "commission": round(x["t"] * (x["pct"] or 0) / 100, 2)} for x in
+                             q("""SELECT st.name, SUM(sa.total) t, st.commission_pct pct FROM sales sa JOIN staff st ON st.id=sa.staff_id
+                                  WHERE sa.ts>=? AND sa.ts<? GROUP BY st.id ORDER BY t DESC""", (s, e))],
+                "sales": [{"t": r["ts"][11:16], "client": r["client"] or "", "staff": r["staff"] or "", "total": r["total"],
+                           "tip": r["tip"], "method": r["method"], "what": what(r["items"])} for r in sales],
+                "pending": [{"t": a["start"][11:16], "client": a["client"], "service": a["service"]}
+                            for a in appointments_on(today) if a["status"] in ("booked", "confirmed")
+                            and a["start"] <= datetime.now().isoformat()]}
+    if kind == "stock":
+        rows = q("""SELECT p.*, s.name supplier FROM products p LEFT JOIN suppliers s ON s.id=p.supplier_id
+                    WHERE p.active=1 ORDER BY (p.stock<=p.min_stock) DESC, p.category, p.name""")
+        items = [{"name": f"{r['brand']} {r['name']}".strip(), "category": r["category"] or "", "stock": r["stock"],
+                  "min": r["min_stock"], "unit": r["unit"] or "", "low": r["stock"] <= r["min_stock"],
+                  "supplier": r["supplier"] or "", "need": max(r["min_stock"] * 2 - r["stock"], 1)} for r in rows]
+        return {"ok": True, "kind": kind, "items": items, "low": sum(i["low"] for i in items),
+                "value": round(sum(r["stock"] * (r["cost"] or 0) for r in rows), 2)}
+    return {"ok": False, "error": "unknown panel"}
+
+
 # ───────────────────────── automations ─────────────────────────
 _auto_started = False
 

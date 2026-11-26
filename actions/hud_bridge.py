@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import re
 import threading
 import time
@@ -514,11 +515,31 @@ def _browser_exe():
     return None
 
 
+def _open_window_mac(url: str, w: int, h: int) -> bool:
+    """macOS: an app-style window in Chrome/Edge/Brave if installed, otherwise the default browser (Safari)."""
+    import subprocess
+    for app in ("Google Chrome", "Microsoft Edge", "Brave Browser"):
+        if any(os.path.exists(os.path.join(d, app + ".app")) for d in ("/Applications", os.path.expanduser("~/Applications"))):
+            try:
+                subprocess.Popen(["/usr/bin/open", "-na", app, "--args", f"--app={url}", f"--window-size={w},{h}"])
+                return True
+            except Exception:
+                pass
+    try:
+        subprocess.Popen(["/usr/bin/open", url])
+        return True
+    except Exception as e:
+        print(f"[Lumi] HUD: could not open window: {e}")
+        return False
+
+
 def open_window(page: str, extra: str = "") -> bool:
     if page not in WINDOWS:
         return False
     w, h = WINDOWS[page]
     url = f"http://127.0.0.1:{PORT}/ui/{page}" + (f"?{extra}" if extra else "")
+    if sys.platform == "darwin":
+        return _open_window_mac(url, w, h)
     exe = _browser_exe()
     if not exe:
         import webbrowser
@@ -943,7 +964,7 @@ def speak_news() -> dict:
 # ───────────────────────── HTTP server ─────────────────────────
 
 PROTECTED = ("/news", "/weather", "/geocode", "/settings", "/open", "/news_speak", "/window",
-             "/chat", "/upload", "/action", "/chatlog", "/world_events", "/boards", "/lumi_event", "/salon_today")
+             "/chat", "/upload", "/action", "/chatlog", "/world_events", "/boards", "/lumi_event", "/salon_today", "/salon_panel")
 MAX_UPLOAD = 100 * 1024 * 1024
 
 
@@ -1017,6 +1038,9 @@ class _Handler(BaseHTTPRequestHandler):
                 elif route == "/salon_today":
                     from actions import salon
                     self._send_json(salon.today_summary())
+                elif route == "/salon_panel":
+                    from actions import salon
+                    self._send_json(salon.panel_data(q.get("kind", [""])[0]))
                 elif route == "/world_events":
                     from actions import world_monitor
                     self._send_json({"ok": True, **world_monitor.get_events(force="refresh" in q)})
